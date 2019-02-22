@@ -116,6 +116,26 @@ fpga_de10_nano_bram.menu.cpu.riscv.cpu.arch=riscv32
 fpga_de10_nano_bram.menu.cpu.riscv.compiler.c.flags={f32c.riscv.compiler.c.flags}
 fpga_de10_nano_bram.menu.cpu.riscv.compiler.cpp.flags={f32c.riscv.compiler.cpp.flags}
 fpga_de10_nano_bram.menu.cpu.riscv.compiler.ld.flags={f32c.riscv.compiler.ld.flags}
+fpga_de10_nano_bram.menu.ramsize.32K=32 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.32K.upload.maximum_size=31232
+fpga_de10_nano_bram.menu.ramsize.32K.build.sdata.size=32768
+fpga_de10_nano_bram.menu.ramsize.32K.compiler.ld.extra_flags=--section-start=.init=0x400
+fpga_de10_nano_bram.menu.ramsize.64K=64 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.64K.upload.maximum_size=64000
+fpga_de10_nano_bram.menu.ramsize.64K.build.sdata.size=65536
+fpga_de10_nano_bram.menu.ramsize.64K.compiler.ld.extra_flags=--section-start=.init=0x400
+fpga_de10_nano_bram.menu.ramsize.128K=128 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.128K.upload.maximum_size=129536
+fpga_de10_nano_bram.menu.ramsize.128K.build.sdata.size=131072
+fpga_de10_nano_bram.menu.ramsize.128K.compiler.ld.extra_flags=--section-start=.init=0x400
+fpga_de10_nano_bram.menu.ramsize.256K=256 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.256K.upload.maximum_size=260608
+fpga_de10_nano_bram.menu.ramsize.256K.build.sdata.size=262144
+fpga_de10_nano_bram.menu.ramsize.256K.compiler.ld.extra_flags=--section-start=.init=0x400
+fpga_de10_nano_bram.menu.ramsize.512K=512 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.512K.upload.maximum_size=522752
+fpga_de10_nano_bram.menu.ramsize.512K.build.sdata.size=524288
+fpga_de10_nano_bram.menu.ramsize.512K.compiler.ld.extra_flags=--section-start=.init=0x400
 
 
 #

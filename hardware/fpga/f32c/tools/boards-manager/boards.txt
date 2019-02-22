@@ -529,10 +529,22 @@ fpga_de10_nano_bram.menu.ramsize.32K=32 KB BRAM Internal
 fpga_de10_nano_bram.menu.ramsize.32K.upload.maximum_size=31232
 fpga_de10_nano_bram.menu.ramsize.32K.build.sdata.size=32768
 fpga_de10_nano_bram.menu.ramsize.32K.compiler.ld.extra_flags=--section-start=.init=0x400
-fpga_de10_nano_bram.menu.ramsize.32M=32 MB SDRAM Onboard
-fpga_de10_nano_bram.menu.ramsize.32M.upload.maximum_size=33521664
-fpga_de10_nano_bram.menu.ramsize.32M.build.sdata.size=4096
-fpga_de10_nano_bram.menu.ramsize.32M.compiler.ld.extra_flags=--section-start=.init=0x80000000
+fpga_de10_nano_bram.menu.ramsize.64K=64 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.64K.upload.maximum_size=64000
+fpga_de10_nano_bram.menu.ramsize.64K.build.sdata.size=65536
+fpga_de10_nano_bram.menu.ramsize.64K.compiler.ld.extra_flags=--section-start=.init=0x400
+fpga_de10_nano_bram.menu.ramsize.128K=128 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.128K.upload.maximum_size=129536
+fpga_de10_nano_bram.menu.ramsize.128K.build.sdata.size=131072
+fpga_de10_nano_bram.menu.ramsize.128K.compiler.ld.extra_flags=--section-start=.init=0x400
+fpga_de10_nano_bram.menu.ramsize.256K=256 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.256K.upload.maximum_size=260608
+fpga_de10_nano_bram.menu.ramsize.256K.build.sdata.size=262144
+fpga_de10_nano_bram.menu.ramsize.256K.compiler.ld.extra_flags=--section-start=.init=0x400
+fpga_de10_nano_bram.menu.ramsize.512K=512 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.512K.upload.maximum_size=522752
+fpga_de10_nano_bram.menu.ramsize.512K.build.sdata.size=524288
+fpga_de10_nano_bram.menu.ramsize.512K.compiler.ld.extra_flags=--section-start=.init=0x400
 
 #
 # ReVerSE-U16 (Altera Cyclone-IV)
