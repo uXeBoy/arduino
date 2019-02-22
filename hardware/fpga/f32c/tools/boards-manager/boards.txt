@@ -499,6 +499,42 @@ fpga_de0_nano_bram.menu.ramsize.32M.build.sdata.size=4096
 fpga_de0_nano_bram.menu.ramsize.32M.compiler.ld.extra_flags=--section-start=.init=0x80000000
 
 #
+# Terasic DE10-Nano
+#
+fpga_de10_nano_bram.name=Terasic DE10-Nano (Altera Cyclone-V, 32K BRAM, 100 MHz)
+fpga_de10_nano_bram.build.f_cpu=100000000
+fpga_de10_nano_bram.build.variant=generic
+fpga_de10_nano_bram.build.mcu=f32c
+fpga_de10_nano_bram.build.core=f32c
+fpga_de10_nano_bram.build.init=1
+fpga_de10_nano_bram.build.board=F32C_FPGA_DE10_NANO_BRAM
+fpga_de10_nano_bram.build.soc_video_bpp=8
+fpga_de10_nano_bram.upload.tool=ujprog
+fpga_de10_nano_bram.upload.wait_for_upload_port=false
+fpga_de10_nano_bram.upload.native_usb=false
+fpga_de10_nano_bram.upload.maximum_size=31232
+fpga_de10_nano_bram.upload.protocol=hex
+fpga_de10_nano_bram.upload.flags=-P{serial.port} -ra
+fpga_de10_nano_bram.menu.cpu.mips=MIPS
+fpga_de10_nano_bram.menu.cpu.mips.cpu.arch=mips
+fpga_de10_nano_bram.menu.cpu.mips.compiler.c.flags={f32c.mips.compiler.c.flags}
+fpga_de10_nano_bram.menu.cpu.mips.compiler.cpp.flags={f32c.mips.compiler.cpp.flags}
+fpga_de10_nano_bram.menu.cpu.mips.compiler.ld.flags={f32c.mips.compiler.ld.flags}
+fpga_de10_nano_bram.menu.cpu.riscv=RISC-V
+fpga_de10_nano_bram.menu.cpu.riscv.cpu.arch=riscv32
+fpga_de10_nano_bram.menu.cpu.riscv.compiler.c.flags={f32c.riscv.compiler.c.flags}
+fpga_de10_nano_bram.menu.cpu.riscv.compiler.cpp.flags={f32c.riscv.compiler.cpp.flags}
+fpga_de10_nano_bram.menu.cpu.riscv.compiler.ld.flags={f32c.riscv.compiler.ld.flags}
+fpga_de10_nano_bram.menu.ramsize.32K=32 KB BRAM Internal
+fpga_de10_nano_bram.menu.ramsize.32K.upload.maximum_size=31232
+fpga_de10_nano_bram.menu.ramsize.32K.build.sdata.size=32768
+fpga_de10_nano_bram.menu.ramsize.32K.compiler.ld.extra_flags=--section-start=.init=0x400
+fpga_de10_nano_bram.menu.ramsize.32M=32 MB SDRAM Onboard
+fpga_de10_nano_bram.menu.ramsize.32M.upload.maximum_size=33521664
+fpga_de10_nano_bram.menu.ramsize.32M.build.sdata.size=4096
+fpga_de10_nano_bram.menu.ramsize.32M.compiler.ld.extra_flags=--section-start=.init=0x80000000
+
+#
 # ReVerSE-U16 (Altera Cyclone-IV)
 #
 fpga_reverse_u16.name=ReVerSE-U16 (Altera Cyclone-IV, 16M SDRAM, 83.33 MHz)
