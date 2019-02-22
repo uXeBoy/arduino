@@ -136,7 +136,14 @@ fpga_de10_nano_bram.menu.ramsize.512K=512 KB BRAM Internal
 fpga_de10_nano_bram.menu.ramsize.512K.upload.maximum_size=522752
 fpga_de10_nano_bram.menu.ramsize.512K.build.sdata.size=524288
 fpga_de10_nano_bram.menu.ramsize.512K.compiler.ld.extra_flags=--section-start=.init=0x400
-
+fpga_de10_nano.bram.menu.soc.normal=Normal (Arduino IO, 100 MHz)
+fpga_de10_nano_bram.menu.soc.normal.socopt=_normal_
+fpga_de10_nano_bram.menu.soc.normal.build.f_cpu=100000000
+fpga_de10_nano_bram.menu.soc.normal.f_cpu_MHz=100
+fpga_de10_nano_bram.menu.soc.fm=Radio (87-108MHz FM/RDS, Arduino IO, 81.25 MHz)
+fpga_de10_nano_bram.menu.soc.fm.socopt=_fm_
+fpga_de10_nano_bram.menu.soc.fm.build.f_cpu=81250000
+fpga_de10_nano_bram.menu.soc.fm.f_cpu_MHz=81.25
 
 #
 # Spartan-3 (3E, 3A, 3AN) Starter Kits
