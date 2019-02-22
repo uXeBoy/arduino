@@ -29,9 +29,41 @@
 
 #include <stdint.h>
 
+//
+// Menlo:
+//
+// There are only (4) 32 bit registers in the top level
+// decode. See f32c/rtl/soc/fm/fm.vhd
+//
+// 0xFFFFFC00 - Hz register
+// 0xFFFFFC04 - data register
+// 0xFFFFFC06 - message address register - not used. It's actually the upper half of the data register.
+// 0xFFFFFC08 - message length register
+//
+// It appears the data is now accessed with the message byte address
+// in the upper 16 bit word of the message data register, with the
+// byte in the lower byte. See msgbyte() function in this file for details.
+//
+// This means the message address register is not used.
+//
+// See the hardware decoder address 0xFFFF_FC00 for top_fmrds_bram_mips on
+// DE10-Nano Menlo project. This appears to be inline with the actual
+// implementation of FM RDS here.
+//
+
+// Menlo:
+// TODO: Update the code to use this proper constants  once validated.
+// IO_BASE + 0x400 => IO_BASE + 0x4FF
+//#define IO_FMRDS 0x400
+//
+// This results in 0xFFFFFC00
+// #define RDS_ADDRESS (IO_BASE + IO_FMRDS)
+
+// Menlo: This legacy comment is all wrong. Wrong address, wrong access type.
+// see msgbyte function in this header which hard codes anyway.
 // hardware address of 260-byte RDS buffer
 // 260 32-bit words contain each a 8-bit byte (LSB)
-#define RDS_ADDRESS 0xFFFFF000
+// #define RDS_ADDRESS 0xFFFFF000
 
 #define RDS_GROUP_LENGTH 4
 #define RDS_BITS_PER_GROUP (RDS_GROUP_LENGTH * (RDS_BLOCK_SIZE+RDS_POLY_DEG))
