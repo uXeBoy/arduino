@@ -501,7 +501,7 @@ fpga_de0_nano_bram.menu.ramsize.32M.compiler.ld.extra_flags=--section-start=.ini
 #
 # Terasic DE10-Nano
 #
-fpga_de10_nano_bram.name=Terasic DE10-Nano (Altera Cyclone-V, 32K BRAM, 100 MHz)
+fpga_de10_nano_bram.name=Terasic DE10-Nano (Altera Cyclone-V 32K-512K BRAM, 100 MHz)
 fpga_de10_nano_bram.build.f_cpu=100000000
 fpga_de10_nano_bram.build.variant=generic
 fpga_de10_nano_bram.build.mcu=f32c
@@ -549,10 +549,10 @@ fpga_de10_nano.bram.menu.soc.normal=Normal (Arduino IO, 100 MHz)
 fpga_de10_nano_bram.menu.soc.normal.socopt=_normal_
 fpga_de10_nano_bram.menu.soc.normal.build.f_cpu=100000000
 fpga_de10_nano_bram.menu.soc.normal.f_cpu_MHz=100
-fpga_de10_nano_bram.menu.soc.fm=Radio (87-108MHz FM/RDS, Arduino IO, 81.25 MHz)
+fpga_de10_nano_bram.menu.soc.fm=Radio (87-108MHz FM/RDS, Arduino IO, CPU 100 MHz)
 fpga_de10_nano_bram.menu.soc.fm.socopt=_fm_
-fpga_de10_nano_bram.menu.soc.fm.build.f_cpu=81250000
-fpga_de10_nano_bram.menu.soc.fm.f_cpu_MHz=81.25
+fpga_de10_nano_bram.menu.soc.fm.build.f_cpu=100000000
+fpga_de10_nano_bram.menu.soc.fm.f_cpu_MHz=100
 
 #
 # ReVerSE-U16 (Altera Cyclone-IV)
