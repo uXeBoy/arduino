@@ -17,9 +17,14 @@ void setup() {
   for(i = 0; i < sizeof(rt)-1; i++)
     rt[i] = '@'+i; // ascii map
   /* Setup initial RDS text */
-  rds.set_pi(pi); // station numeric ID
-  rds.set_ps(ps); // 8-char text, displayed as station name
-  rds.set_rt(rt); // 64-char text, not every radio displays it
+  // Menlo: These have changed in the latest release. Make it build.
+  //rds.set_pi(pi); // station numeric ID
+  //rds.set_ps(ps); // 8-char text, displayed as station name
+  //rds.set_rt(rt); // 64-char text, not every radio displays it
+  rds.pi(pi); // station numeric ID
+  rds.ps(ps); // 8-char text, displayed as station name
+  rds.rt(rt); // 64-char text, not every radio displays it
+
   Serial.begin(115200);
 }
 
@@ -36,7 +41,7 @@ void loop()
   volatile uint32_t *rdsdebug = (volatile uint32_t *)0xFFFFFC00;
   int8_t rds, pilot, stereo;
   volatile struct rdsdebug *debug = (volatile struct rdsdebug *)rdsdebug;
- 
+
 
   snprintf(line, sizeof(line), 
     "%08x stereo=%3d pilot=%3d rds=%3d", 

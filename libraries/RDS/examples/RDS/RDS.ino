@@ -19,7 +19,7 @@ void setup() {
   /* Setup initial RDS text */
   rds.pi(pi); // station numeric ID
   rds.stereo(0); // 0-Inform over RDS that we send Mono, 1-Stereo
-  rds.ta(0);  // 0-No, 1-Traffice Announcements
+  rds.ta(0);  // 0-No, 1-Traffic Announcements
   rds.ps(ps); // 8-char text, displayed as station name
   rds.rt(rt); // 64-char text, not every radio displays it
   rds.Hz(107900000); // Hz carrier wave frequency
