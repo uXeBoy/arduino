@@ -548,8 +548,8 @@ fpga_de10_nano_bram.menu.soc.fm.f_cpu_MHz=100
 #
 # Terasic DE10-Lite BRAM
 #
-fpga_de10_lite_bram.name=Menlo DE10-Lite (Altera MAX10 32K BRAM, 75 MHz)
-fpga_de10_lite_bram.build.f_cpu=75000000
+fpga_de10_lite_bram.name=Menlo DE10-Lite (Altera MAX10 32K BRAM, 50 MHz)
+fpga_de10_lite_bram.build.f_cpu=50000000
 fpga_de10_lite_bram.build.variant=generic
 fpga_de10_lite_bram.build.mcu=f32c
 fpga_de10_lite_bram.build.core=f32c
@@ -574,10 +574,10 @@ fpga_de10_lite_bram.menu.ramsize.32K=32 KB BRAM Internal
 fpga_de10_lite_bram.menu.ramsize.32K.upload.maximum_size=31232
 fpga_de10_lite_bram.menu.ramsize.32K.build.sdata.size=32768
 fpga_de10_lite_bram.menu.ramsize.32K.compiler.ld.extra_flags=--section-start=.init=0x400
-fpga_de10_lite_bram.menu.soc.basic=basic (Arduino IO, CPU 75 MHz)
+fpga_de10_lite_bram.menu.soc.basic=basic (Arduino IO, CPU 50 MHz)
 fpga_de10_lite_bram.menu.soc.basic.socopt=_basic_
-fpga_de10_lite_bram.menu.soc.basic.build.f_cpu=75000000
-fpga_de10_lite_bram.menu.soc.basic.f_cpu_MHz=75
+fpga_de10_lite_bram.menu.soc.basic.build.f_cpu=50000000
+fpga_de10_lite_bram.menu.soc.basic.f_cpu_MHz=50
 
 #
 # ReVerSE-U16 (Altera Cyclone-IV)
