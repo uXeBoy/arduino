@@ -1,11 +1,21 @@
+
+/*
+  03/03/2019
+
+  Menlopark Innovation LLC
+
+  Software Defined Radio (SDR) created from FM RDS core.
+*/
+
 /*
 This is a test program that dynamically updates RDS message.
 AUTHOR=EMARD
 LICENSE=GPL
 */
 
-#include <RDS.h>
+#include <SDR.h>
 
+// RDS is an operating mode of SDR for FM Radio Data System (RDS) display.
 RDS rds = RDS();
 
 uint16_t pi = 0xCAFE;
@@ -14,16 +24,23 @@ char rt[65] = "ABCDEFGH";
 
 void setup() {
   int i;
-  for(i = 0; i < sizeof(rt)-1; i++)
+
+  for(i = 0; i < sizeof(rt)-1; i++) {
     rt[i] = '@'+i; // ascii map
+  }
+
   /* Setup initial RDS text */
   rds.pi(pi); // station numeric ID
   rds.stereo(0); // 0-Inform over RDS that we send Mono, 1-Stereo
   rds.ta(0);  // 0-No, 1-Traffic Announcements
   rds.ps(ps); // 8-char text, displayed as station name
   rds.rt(rt); // 64-char text, not every radio displays it
+
+  // Note: My MAX10 FPGA generates a 0.5Mhz lower frequency.
   rds.Hz(107900000); // Hz carrier wave frequency
-  //  rds.Hz( 87500000); // Hz carrier wave frequency
+
+  //rds.Hz( 87500000); // Hz carrier wave frequency
+
   rds.length(260); // bytes message length (260 default)
   Serial.begin(115200);
 }
