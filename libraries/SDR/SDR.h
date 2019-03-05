@@ -40,15 +40,56 @@
 #include <stdint.h>
 
 //
+// SDR decodes from 0xFFFFFC00 - 0xFFFFFCFF which is a 256 byte
+// range providing 64 32 bit registers.
+//
+
+//
+// FMRDS is the first (4) 32 bit registers from 0xFFFFFC00 - 0xFFFFFC0F
+//
+#define FMRDS_FREQUENCY         0xFFFFFC00
+#define FMRDS_DATA              0xFFFFFC04
+#define FMRDS_MESSAGE_LENGTH    0xFFFFFC08
+#define FMRDS_CONTROL           0xFFFFFC0C
+
+#define FMRDS_CONTROL_CW_ENABLE        0x00000001
+#define FMRDS_CONTROL_MODULATOR_ENABLE 0x00000002
+#define FMRDS_CONTROL_RDS_DATA_ENABLE  0x00000004
+
+//
+// SDR registers
+//
+#define SDR_CONTROL0            0xFFFFFC10
+#define SDR_CONTROL1            0xFFFFFC14
+#define SDR_CONTROL2            0xFFFFFC18
+#define SDR_CONTROL3            0xFFFFFC1C
+
+// 16 bit PCM I + Q modulation
+#define SDR_PCM_I               0xFFFFFC20
+#define SDR_PCM_Q               0xFFFFFC24
+
+//
+// TODO: Update the code to use these proper constants once validated.
+// IO_BASE + 0x400 => IO_BASE + 0x4FF
+//
+//#define IO_FMRDS 0x400
+//
+// This results in 0xFFFFFC00
+//
+// #define RDS_ADDRESS (IO_BASE + IO_FMRDS)
+//
+
+//
 // Menlo:
 //
-// There are only (4) 32 bit registers in the top level
-// decode. See f32c/rtl/soc/fm/fm.vhd
-//
-// 0xFFFFFC00 - Hz register
-// 0xFFFFFC04 - data register
-// 0xFFFFFC06 - message address register - not used. It's actually the upper half of the data register.
-// 0xFFFFFC08 - message length register
+// 0xFFFFFC00 - Hz register (32 bits)
+// 0xFFFFFC04 - data register (combined 16 bits + 8 bits)
+// 0xFFFFFC08 - message length register (32 bits)
+//              Current RDS message buffer position on read.
+// 0xFFFFFC0C - FM RDS control register.
+//              Bit 0 - CW enable
+//              Bit 1 - Modulator enable
+//              Bit 2 - RDS Data enable
 //
 // It appears the data is now accessed with the message byte address
 // in the upper 16 bit word of the message data register, with the
@@ -60,29 +101,38 @@
 // DE10-Nano Menlo project. This appears to be inline with the actual
 // implementation of FM RDS here.
 //
-
+// -- ---------------------------------------------------------------------------------
+// -- | 3 3 2 2 | 2 2 2 2 | 2 2 2 2 | 1 1 1 1 | 1 1 1 1 | 1 1 0 0 | 0 0 0 0 | 0 0 0 0 |
+// -- | 1 0 9 8 | 7 6 5 4 | 3 2 1 0 | 9 8 7 6 | 5 4 3 2 | 1 0 9 8 | 7 6 5 4 | 3 2 1 0 |
+// -- ---------------------------------------------------------------------------------
+// -- | 1 1 1 1   1 1 1 1   1 1 1 1   1 1 1 1   1 1 1 1   1 1 0 0   0 0 0 0   0 0 0 0 | 0xFFFF_FC00
+// -- ---------------------------------------------------------------------------------
+// -- | F         F         F         F       | F         C       | 0         0       |
+// -- ---------------------------------------------------------------------------------
+// -- |                            Frequency 31 - 0                                   |
+// -- ---------------------------------------------------------------------------------
 //
-// SDR decodes from 0xFFFFFC00 - 0xFFFFFCFF which is a 256 byte
-// range providing 64 32 bit registers.
+// -- ---------------------------------------------------------------------------------
+// -- | 3 3 2 2 | 2 2 2 2 | 2 2 2 2 | 1 1 1 1 | 1 1 1 1 | 1 1 0 0 | 0 0 0 0 | 0 0 0 0 |
+// -- | 1 0 9 8 | 7 6 5 4 | 3 2 1 0 | 9 8 7 6 | 5 4 3 2 | 1 0 9 8 | 7 6 5 4 | 3 2 1 0 |
+// -- ---------------------------------------------------------------------------------
+// -- | 1 1 1 1   1 1 1 1   1 1 1 1   1 1 1 1   1 1 1 1   1 1 0 0   0 0 0 0   0 1 0 0 | 0xFFFF_FC04
+// -- ---------------------------------------------------------------------------------
+// -- | F         F         F         F       | F         C       | 0         4       |
+// -- ---------------------------------------------------------------------------------
+// -- | Data Address 31 - 16                  | Unknown 15 - 8    | Data 7 - 0        |
+// -- ---------------------------------------------------------------------------------
 //
-
-//
-// FMRDS is the first (4) 32 bit registers from 0xFFFFFC00 - 0xFFFFFC0B
-//
-#define FMRDS_FREQUENCY         0xFFFFFC00
-#define FMRDS_DATA              0xFFFFFC04
-#define FMRDS_MESSAGE_ADDRESS   0xFFFFFC06
-#define FMRDS_MESSAGE_LENGTH    0xFFFFFC08
-
-//
-// TODO: Update the code to use these proper constants once validated.
-// IO_BASE + 0x400 => IO_BASE + 0x4FF
-//
-//#define IO_FMRDS 0x400
-//
-// This results in 0xFFFFFC00
-//
-// #define RDS_ADDRESS (IO_BASE + IO_FMRDS)
+// -- ---------------------------------------------------------------------------------
+// -- | 3 3 2 2 | 2 2 2 2 | 2 2 2 2 | 1 1 1 1 | 1 1 1 1 | 1 1 0 0 | 0 0 0 0 | 0 0 0 0 |
+// -- | 1 0 9 8 | 7 6 5 4 | 3 2 1 0 | 9 8 7 6 | 5 4 3 2 | 1 0 9 8 | 7 6 5 4 | 3 2 1 0 |
+// -- ---------------------------------------------------------------------------------
+// -- | 1 1 1 1   1 1 1 1   1 1 1 1   1 1 1 1   1 1 1 1   1 1 0 0   0 0 0 0   1 0 0 0 | 0xFFFF_FC08
+// -- ---------------------------------------------------------------------------------
+// -- | F         F         F         F       | F         C       | 0         8       |
+// -- ---------------------------------------------------------------------------------
+// -- |                            Message Length 31 - 0                              |
+// -- ---------------------------------------------------------------------------------
 //
 
 #define RDS_GROUP_LENGTH 4
@@ -112,6 +162,12 @@ class RDS {
     void pi(uint16_t pi_code);
     void ta(uint8_t ta);
     void stereo(uint8_t stereo);
+
+    inline void WriteControlRegister(uint32_t value)
+    {
+      volatile uint32_t *fmrds_control = (volatile uint32_t *)FMRDS_CONTROL;
+      *fmrds_control = value;
+    }
 
     inline void Hz(uint32_t f)
     {

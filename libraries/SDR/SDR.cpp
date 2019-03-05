@@ -136,10 +136,11 @@ void RDS::binary_rt_group(uint8_t *buffer, uint8_t group_number)
 void RDS::binary_ct_group(uint8_t *buffer)
 {
   uint16_t blocks[RDS_GROUP_LENGTH] = {this->value_pi, 0, 0, 0};
-  int latest_minutes = -1;
 
+  // Menlo: remove warning.
+  //int latest_minutes = -1;
   // Generate CT group
-  latest_minutes = this->tm_min;
+  //latest_minutes = this->tm_min;
 
   int l = this->tm_mon <= 1 ? 1 : 0;
   int mjd = 14956 + this->tm_mday +

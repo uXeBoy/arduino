@@ -23,7 +23,8 @@ char ps[9] = "TEST1234";
 char rt[65] = "ABCDEFGH";
 
 void setup() {
-  int i;
+  // int i;
+  unsigned int i;
 
   for(i = 0; i < sizeof(rt)-1; i++) {
     rt[i] = '@'+i; // ascii map
@@ -36,10 +37,16 @@ void setup() {
   rds.ps(ps); // 8-char text, displayed as station name
   rds.rt(rt); // 64-char text, not every radio displays it
 
-  // Note: My MAX10 FPGA generates a 0.5Mhz lower frequency.
-  rds.Hz(107900000); // Hz carrier wave frequency
+  // Shortwave experiment
+  // Still send FM modulated RDS and see what it looks/hears like.
+  // This works. 8.00Mhz signal with "noise" from RDS.
+  // 03/04/2019
+  rds.Hz(8000000); // Hz carrier wave frequency
 
-  //rds.Hz( 87500000); // Hz carrier wave frequency
+  // Note: My MAX10 FPGA generates a 0.5Mhz lower frequency.
+  //rds.Hz(107900000); // Hz carrier wave frequency
+
+  //rds.Hz(87500000); // Hz carrier wave frequency
 
   rds.length(260); // bytes message length (260 default)
   Serial.begin(115200);
