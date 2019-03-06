@@ -5,6 +5,20 @@
   Menlopark Innovation LLC
 
   Software Defined Radio (SDR) created from FM RDS core.
+
+  03/05/2019
+  TODO:
+   #Bring in Arduino morse program.
+   #Add serial console UI to allow commands, frequency change, morse/RDS messages.
+   Add R/W test code for new SDR registers.
+   A 1Khz signal generation using delay(1) (actually 500hz with 1ms on/off)
+   Add support for hardware PWM modulation
+   Connect FM PCM modulation.
+   Test sound sample.
+   AM modulation experiments
+   SSB modulation experiments
+   Port WSPR
+   Other ham digital modes.
 */
 
 #define BAUD_RATE 115000
@@ -12,7 +26,10 @@
 //
 // 7.125Mhz Legal morse code band for all US hams, with proper filters.
 //
-// 7.185Mhz USB on MAX10 FPGA (legal for higher license's
+// 7.185Mhz USB on MAX10 FPGA (legal for higher license's)
+//
+// MAX10/DE10-Lite may need an external reference clock for radio frequency
+// accuracy.
 //
 #define SHORTWAVE_CW_FREQUENCY 7125000
 
@@ -30,6 +47,8 @@ LICENSE=GPL
 
 #include <SDR.h>
 
+#include "MorseSync.h"
+
 // Pin 13 has an LED connected on most Arduino boards.
 int led = 13;
 
@@ -40,49 +59,131 @@ uint16_t pi = 0xCAFE;
 char ps[9] = "TEST1234";
 char rt[65] = "ABCDEFGH";
 
-void carrier_on() {
+//
+// Keep application variables in one struct.
+//
+typedef struct _APPLICATION_VARS {
+
+    /* Variable to store UART received character */
+    int Ch;
+
+    bool carrier_on;
+    bool fm_modulation_on;
+    bool am_modulation_on;
+    bool morse_on;
+
+} *PAPPLICATION_VARS, APPLICATION_VARS;
+
+APPLICATION_VARS G_app;
+
+void carrier_on()
+{
     uint32_t cr = FMRDS_CONTROL_CW_ENABLE;
     rds.WriteControlRegister(cr);
+    digitalWrite(led, HIGH);
 }
 
-void carrier_off() {
+void carrier_off()
+{
     uint32_t cr = 0;
     rds.WriteControlRegister(cr);
+    digitalWrite(led, LOW);
 }
 
-void fm_rds_setup();
-void fm_rds_loop();
+void pure_carrier(int duration)
+{
+    carrier_on();
+    delay(duration);
+    carrier_off();
+}
 
-void sw_cw_setup();
-void sw_cw_loop();
+void am_tone(int half_period, int count)
+{
+    uint32_t cr_on = FMRDS_CONTROL_CW_ENABLE;
+    uint32_t cr_off = 0;
 
-void setup() {
+    for (int i = 0; i < count; i++) {
+
+        rds.WriteControlRegister(cr_on);
+        //digitalWrite(led, HIGH);
+
+        delay(half_period);
+
+        rds.WriteControlRegister(cr_off);
+
+        delay(half_period);
+
+        //digitalWrite(led, LOW);
+    }
+}
+
+
+class CwKeyer : public MorseKeyer {
+
+public:
+      CwKeyer() {
+      }
+
+      void Initialize(RDS* sdr) {
+          m_sdr = sdr;
+      }
+
+      void virtual KeyDown(int interval) {
+          carrier_on();
+          delay(interval);
+          carrier_off();
+      }
+
+private:
+      RDS* m_sdr;
+};
+
+CwKeyer G_Keyer;
+
+MorseSync G_Morse;
+
+void fm_rds_setup(PAPPLICATION_VARS p);
+void fm_rds_loop(PAPPLICATION_VARS p);
+
+void sw_cw_setup(PAPPLICATION_VARS p);
+void sw_cw_loop(PAPPLICATION_VARS p);
+
+void ProcessUserInput(PAPPLICATION_VARS p);
+
+void setup()
+{
+    PAPPLICATION_VARS p = &G_app;
 
     Serial.begin(BAUD_RATE);
 
     // initialize the digital pin as an output.
     pinMode(led, OUTPUT);     
 
+    // Initialize morse
+    G_Morse.Initialize(&G_Keyer);
+
     // Select which setup for which radio operating mode to use
 
     // FM Radio Data System (RDS) setup.
-    //fm_rds_setup();
+    //fm_rds_setup(p);
 
     // Shortwave CW (Continuous Wave or morse code) setup.
-    sw_cw_setup();
+    sw_cw_setup(p);
 }
 
-void loop() {
-
+void loop()
+{
    // FM Radio Data System (RDS) setup.
-   //fm_rds_loop();
+   //fm_rds_loop(&G_app);
 
    // Shortwave CW (Continuous Wave or morse code) setup.
-   sw_cw_loop();
+   sw_cw_loop(&G_app);
+
+   ProcessUserInput(&G_app);
 }
 
-void sw_cw_setup() {
-
+void sw_cw_setup(PAPPLICATION_VARS p)
+{
   uint32_t frequency;
 
   frequency = SHORTWAVE_CW_FREQUENCY;
@@ -93,27 +194,37 @@ void sw_cw_setup() {
   //carrier_on();
 }
 
-void sw_cw_loop() {
+void sw_cw_loop(PAPPLICATION_VARS p)
+{
   static uint8_t loopCount;
 
-  // Enable the output
-  carrier_on();
-  digitalWrite(led, HIGH);
+  Serial.print("loopCount ");
+  Serial.println(loopCount);
 
-  // print actual status on serial
-  Serial.print("Carrier ON count : ");
-  Serial.println(loopCount, HEX);
+  //G_Morse.SendString("test");
+  //G_Morse.SendString("What Hath God Wrought?");
+  //G_Morse.SendString("the quick brown fox jumped over the lazy dog");
+  //G_Morse.SendString("vvv");
+  //G_Morse.SendString("xxx");
+  //G_Morse.SendString("fpga dds sdr morse transmitter");
+  //G_Morse.SendString("xxx");
 
-  delay(2000); // wait 2 seconds
+  G_Morse.SendString("xxx");
 
-  // Disable the output
-  carrier_off();
-  digitalWrite(led, LOW);
+  delay(2000);
 
-  Serial.print("Carrier OFF count : ");
-  Serial.println(loopCount, HEX);
+  // AM modulated tone, 500Hz, count for 10 seconds
+  am_tone(1, 10000);
 
-  delay(2000); // wait 2 seconds
+  delay(2000);
+
+  G_Morse.SendString("aaa");
+
+  delay(2000);
+
+  pure_carrier(10000);
+
+  delay(2000);
 
   loopCount++;
 }
@@ -121,7 +232,7 @@ void sw_cw_loop() {
 //
 // Setup to transmit FM RDS data.
 //
-void fm_rds_setup() {
+void fm_rds_setup(PAPPLICATION_VARS p) {
   // int i;
   unsigned int i;
 
@@ -141,7 +252,7 @@ void fm_rds_setup() {
   rds.length(260); // bytes message length (260 default)
 }
 
-void fm_rds_loop()
+void fm_rds_loop(PAPPLICATION_VARS p)
 {
   static uint8_t number;
 
@@ -163,4 +274,95 @@ void fm_rds_loop()
 
   delay(2000); // wait 2 seconds
   number++; // increment number
+}
+
+void
+ProcessUserInput(PAPPLICATION_VARS p)
+{
+    if (Serial.available()) {
+        p->Ch = Serial.read();
+    }
+    else {
+        p->Ch = -1;
+        return;
+    }
+
+    /* Set flags based on UART command */
+    switch(p->Ch)
+    {
+        case 'a':
+            // AM Modulation on
+            break;
+
+        case 'A':
+            // AM Modulation off
+            break;
+
+        case 'c':
+            // Carrier on
+            break;
+
+        case 'C':
+            // Carrier off
+            break;
+
+        case 's':
+            // FM Modulation on
+            break;
+
+        case 'S':
+            // FM Modulation off
+            break;
+
+        case 'f':
+            // Display frequency
+            break;
+
+        case 'F':
+            // Set frequency
+            break;
+
+        case 'm':
+            // Morse Code  on
+            break;
+
+        case 'M':
+            // Morse Code off
+            break;
+
+        case 'r':
+            // RDS on
+            break;
+
+        case 'R':
+            // RDS off
+            break;
+
+	case 0:
+	case -1:
+	    /* No new data was received */
+	    break;
+
+	case 0xa:
+	    // Ignore carriage return
+	    break;
+
+	case 0xd:
+	    // Ignore linefeed
+	    break;
+
+	default:
+	    Serial.print(F("Unrecognized Command: 0x"));
+            Serial.println(p->Ch, HEX);
+
+	    // FallThrough
+
+	case '?':
+	case 'h':
+	case 'H':
+	    // Help
+	    Serial.println(F("Menlo SDR Help:\r\n"));
+	    break;    
+
+    } // end switch
 }
