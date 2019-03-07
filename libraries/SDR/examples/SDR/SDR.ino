@@ -366,3 +366,180 @@ ProcessUserInput(PAPPLICATION_VARS p)
 
     } // end switch
 }
+
+//
+// Test 32 bit register including byte and word read/write access.
+//
+void register_test32(void* addr)
+{
+  volatile uint32_t *r;
+  volatile uint16_t *rw;
+  volatile uint8_t  *rb;
+
+  r = (uint32_t*)addr;
+
+  *r = 0x03020100;
+
+  if (*r != 0x03020100) {
+    Serial.println("reg test failed");
+  }
+ 
+  rw = (uint16_t*)addr;
+  if (*rw != 0x0100) {
+    Serial.println("reg test low word failed");
+  }
+
+  rw = (uint16_t*)(addr+2);
+  if (*rw != 0x0302) {
+    Serial.println("reg test high word failed");
+  }
+
+  rb = (uint8_t*)(addr);
+  if (*rb != 0x00) {
+    Serial.println("reg test byte 0 failed");
+  }
+
+  rb = (uint8_t*)(addr+1);
+  if (*rb != 0x01) {
+    Serial.println("reg test byte 1 failed");
+  }
+
+  rb = (uint8_t*)(addr+2);
+  if (*rb != 0x02) {
+    Serial.println("reg test byte 2 failed");
+  }
+
+  rb = (uint8_t*)(addr+3);
+  if (*rb != 0x03) {
+    Serial.println("reg test byte 3 failed");
+  }
+
+  //
+  // Byte write
+  //
+
+  rb = (uint8_t*)(addr);
+  *rb = 0xFF;
+  if (*r != 0x030201FF) {
+    Serial.println("reg test write byte 0 failed");
+  }
+
+  rb = (uint8_t*)(addr+1);
+  *rb = 0xFF;
+  if (*r != 0x0302FFFF) {
+    Serial.println("reg test write byte 1 failed");
+  }
+
+  rb = (uint8_t*)(addr+2);
+  *rb = 0xFF;
+  if (*r != 0x03FFFFFF) {
+    Serial.println("reg test write byte 2 failed");
+  }
+
+  rb = (uint8_t*)(addr+3);
+  *rb = 0xFF;
+  if (*r != 0xFFFFFFFF) {
+    Serial.println("reg test write byte 3 failed");
+  }
+
+
+  //
+  // Word write
+  //
+
+  rw = (uint16_t*)(addr);
+  *rw = 0xAAAA;
+  if (*r != 0xFFFFAAAA) {
+    Serial.println("reg test write word 0 failed");
+  }
+
+  rw = (uint16_t*)(addr+2);
+  *rw = 0x5555;
+  if (*r != 0xFFFFAAAA) {
+    Serial.println("reg test write byte 1 failed");
+  }
+
+  // Back to zero
+  *r = 0x00000000;
+  if (*r != 0x00000000) {
+    Serial.println("reg test back to zero failed");
+  }
+
+}
+
+//
+// This tests the SDR registers.
+//
+void sdr_registers_test()
+{
+  volatile uint32_t *r;
+
+  //
+  // Validate independence of addressing.
+  //
+  r = (volatile uint32_t *)SDR_CONTROL0;
+  *r = 0x03020100;
+
+  if (*r != 0x03020100) {
+    Serial.println("reg test 0 failed");
+  }
+
+  r = (volatile uint32_t *)SDR_CONTROL1;
+  *r = 0x07060504;
+
+  if (*r != 0x07060504) {
+    Serial.println("reg test 1 failed");
+  }
+
+  r = (volatile uint32_t *)SDR_CONTROL2;
+  *r = 0x0B0A0908;
+
+  if (*r != 0x0B0A0908) {
+    Serial.println("reg test 2 failed");
+  }
+
+  r = (volatile uint32_t *)SDR_CONTROL3;
+  *r = 0x0F0E0D0C;
+
+  if (*r != 0x0F0E0D0C) {
+    Serial.println("reg test 3 failed");
+  }
+
+  //
+  // Validate byte, word, and long read and writes.
+  //
+  register_test32(SDR_CONTROL0);
+  register_test32(SDR_CONTROL1);
+  register_test32(SDR_CONTROL2);
+  register_test32(SDR_CONTROL3);
+}
+
+//
+// Determine largest memory block that can be allocated.
+//
+void
+memory_test()
+{
+    char* p;
+    int length;
+
+    length = 1024*1024;
+
+    while(1) {
+
+        p = (char*)malloc(length);
+        if (p == NULL) {
+            length = length / 2;
+            continue;
+        }
+
+        Serial.print("Memory Test: Allocated");
+        Serial.println(length, HEX);
+
+        memset(p, 0, length);
+
+        free(p);
+
+        return;
+    }
+}
