@@ -47,13 +47,13 @@ public:
     m_keyer = keyer;
   }
 
-  void SendString(char* string);
+  void SendString(const char* string);
 
 private:
 
   MorseKeyer* m_keyer;
 
-  void SendStringInternal(char* string);
+  void SendStringInternal(const char* string);
 
   void SendLetterInternal(uint8_t letter);
 

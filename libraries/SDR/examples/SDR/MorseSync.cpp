@@ -79,7 +79,7 @@ MorseSync::MorseSync() {
 // Send the string now, not returning to the caller
 // until done.
 //
-void MorseSync::SendString(char* string) {
+void MorseSync::SendString(const char* string) {
 
   while (*string) {
 

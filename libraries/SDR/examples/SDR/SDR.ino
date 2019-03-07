@@ -67,6 +67,7 @@ typedef struct _APPLICATION_VARS {
     /* Variable to store UART received character */
     int Ch;
 
+    bool verbose;
     bool carrier_on;
     bool fm_modulation_on;
     bool am_modulation_on;
@@ -146,13 +147,20 @@ void fm_rds_setup(PAPPLICATION_VARS p);
 void fm_rds_loop(PAPPLICATION_VARS p);
 
 void sw_cw_setup(PAPPLICATION_VARS p);
-void sw_cw_loop(PAPPLICATION_VARS p);
+void sw_cw_test(PAPPLICATION_VARS p);
+
+void sw_am_test(PAPPLICATION_VARS p);
+
+void sdr_registers_test();
+void memory_test();
 
 void ProcessUserInput(PAPPLICATION_VARS p);
 
 void setup()
 {
     PAPPLICATION_VARS p = &G_app;
+
+    p->verbose = TRUE;
 
     Serial.begin(BAUD_RATE);
 
@@ -163,22 +171,17 @@ void setup()
     G_Morse.Initialize(&G_Keyer);
 
     // Select which setup for which radio operating mode to use
+    // Currently done by UI
 
     // FM Radio Data System (RDS) setup.
     //fm_rds_setup(p);
 
     // Shortwave CW (Continuous Wave or morse code) setup.
-    sw_cw_setup(p);
+    //sw_cw_setup(p);
 }
 
 void loop()
 {
-   // FM Radio Data System (RDS) setup.
-   //fm_rds_loop(&G_app);
-
-   // Shortwave CW (Continuous Wave or morse code) setup.
-   sw_cw_loop(&G_app);
-
    ProcessUserInput(&G_app);
 }
 
@@ -194,39 +197,23 @@ void sw_cw_setup(PAPPLICATION_VARS p)
   //carrier_on();
 }
 
-void sw_cw_loop(PAPPLICATION_VARS p)
+void
+sw_cw_test(PAPPLICATION_VARS p)
 {
-  static uint8_t loopCount;
-
-  Serial.print("loopCount ");
-  Serial.println(loopCount);
-
-  //G_Morse.SendString("test");
-  //G_Morse.SendString("What Hath God Wrought?");
-  //G_Morse.SendString("the quick brown fox jumped over the lazy dog");
-  //G_Morse.SendString("vvv");
-  //G_Morse.SendString("xxx");
-  //G_Morse.SendString("fpga dds sdr morse transmitter");
-  //G_Morse.SendString("xxx");
-
+  if (p->verbose) Serial.print("Morse Test...");
   G_Morse.SendString("xxx");
+  G_Morse.SendString("test");
+  G_Morse.SendString("xxx");
+  if (p->verbose) Serial.println(" Done.");
+}
 
-  delay(2000);
-
+void
+sw_am_test(PAPPLICATION_VARS p)
+{
+  if (p->verbose) Serial.print("AM Tone Test...");
   // AM modulated tone, 500Hz, count for 10 seconds
   am_tone(1, 10000);
-
-  delay(2000);
-
-  G_Morse.SendString("aaa");
-
-  delay(2000);
-
-  pure_carrier(10000);
-
-  delay(2000);
-
-  loopCount++;
+  if (p->verbose) Serial.println(" Done.");
 }
 
 //
@@ -250,6 +237,30 @@ void fm_rds_setup(PAPPLICATION_VARS p) {
   rds.Hz(FM_FREQUENCY); // Hz carrier wave frequency
 
   rds.length(260); // bytes message length (260 default)
+}
+
+//
+// This tests the FM RDS registers.
+//
+void fm_rds_registers_display(PAPPLICATION_VARS p)
+{
+  volatile uint32_t *r;
+
+  r = (volatile uint32_t*)FMRDS_FREQUENCY;
+  Serial.print("Frequency: ");
+  Serial.println(*r);
+
+  r = (volatile uint32_t*)FMRDS_DATA;
+  Serial.print("Data: ");
+  Serial.println(*r);
+
+  r = (volatile uint32_t*)FMRDS_MESSAGE_LENGTH;
+  Serial.print("Message Length: ");
+  Serial.println(*r);
+
+  r = (volatile uint32_t*)FMRDS_CONTROL;
+  Serial.print("Control: ");
+  Serial.println(*r);
 }
 
 void fm_rds_loop(PAPPLICATION_VARS p)
@@ -276,15 +287,15 @@ void fm_rds_loop(PAPPLICATION_VARS p)
   number++; // increment number
 }
 
-void
-ProcessUserInput(PAPPLICATION_VARS p)
+int
+ProcessUserInputWorker(PAPPLICATION_VARS p)
 {
     if (Serial.available()) {
         p->Ch = Serial.read();
     }
     else {
         p->Ch = -1;
-        return;
+        return 0;
     }
 
     /* Set flags based on UART command */
@@ -292,6 +303,7 @@ ProcessUserInput(PAPPLICATION_VARS p)
     {
         case 'a':
             // AM Modulation on
+            sw_am_test(&G_app);
             break;
 
         case 'A':
@@ -300,10 +312,16 @@ ProcessUserInput(PAPPLICATION_VARS p)
 
         case 'c':
             // Carrier on
+            p->carrier_on = TRUE;
+            carrier_on();
+            Serial.println("CW carrier ON");
             break;
 
         case 'C':
             // Carrier off
+            carrier_off();
+            p->carrier_on = FALSE;
+            Serial.println("CW carrier FF");
             break;
 
         case 's':
@@ -324,6 +342,8 @@ ProcessUserInput(PAPPLICATION_VARS p)
 
         case 'm':
             // Morse Code  on
+            sw_cw_setup(p);
+            sw_cw_test(&G_app);
             break;
 
         case 'M':
@@ -332,10 +352,36 @@ ProcessUserInput(PAPPLICATION_VARS p)
 
         case 'r':
             // RDS on
+            fm_rds_setup(p);
+            fm_rds_registers_display(p);
             break;
 
         case 'R':
             // RDS off
+            break;
+
+        case 'Z':
+            // Registers test
+            Serial.print("Registers Test...");
+            sdr_registers_test();
+            Serial.println(" Done.");
+            break;
+
+        case 'v':
+            // Verbose on
+            p->verbose = TRUE;
+            break;
+
+        case 'V':
+            // Verbose off
+            p->verbose = TRUE;
+            break;
+
+        case 'z':
+            // Memory test
+            Serial.print("Memory Test...");
+            memory_test();
+            Serial.println(" Done.");
             break;
 
 	case 0:
@@ -362,9 +408,37 @@ ProcessUserInput(PAPPLICATION_VARS p)
 	case 'H':
 	    // Help
 	    Serial.println(F("Menlo SDR Help:\r\n"));
+            Serial.println("c - CW carrier on, C - CW Carrier off");
+            Serial.println("a - AM modulation test");
+            Serial.println("s - FM modulation on, S - FM modulation off");
+            Serial.println("r - FM RDS on, R - FM RDS off");
+            Serial.println("f - Display frequency, F - Set frequency");
+            Serial.println("m - Morse CW test");
+            Serial.println("Z - Registers test");
+            Serial.println("z - Memory Test");
+            Serial.println("v - Verbose on, V - Verbose off");
 	    break;    
 
     } // end switch
+
+    return 1;
+}
+
+//
+// Process user input till no more characters
+// in hardware buffer.
+//
+void
+ProcessUserInput(PAPPLICATION_VARS p)
+{
+    int ret;
+
+    while(1) {
+        ret = ProcessUserInputWorker(p);
+        if (ret == 0) {
+            return;
+        }
+    }
 }
 
 //
@@ -381,37 +455,44 @@ void register_test32(void* addr)
   *r = 0x03020100;
 
   if (*r != 0x03020100) {
-    Serial.println("reg test failed");
+    Serial.print("reg test failed SB 0x03020100 is: ");
+    Serial.println(*r, HEX);
   }
  
   rw = (uint16_t*)addr;
   if (*rw != 0x0100) {
-    Serial.println("reg test low word failed");
+    Serial.print("reg test low word failed SB 0x0100 is: ");
+    Serial.println(*rw, HEX);
   }
 
-  rw = (uint16_t*)(addr+2);
+  rw = (uint16_t*)((int)addr+2);
   if (*rw != 0x0302) {
-    Serial.println("reg test high word failed");
+    Serial.print("reg test high word failed SB 0x0302 is: ");
+    Serial.println(*rw, HEX);
   }
 
   rb = (uint8_t*)(addr);
   if (*rb != 0x00) {
-    Serial.println("reg test byte 0 failed");
+    Serial.println("reg test byte 0 failed SB 0x00 is: ");
+    Serial.println(*rb, HEX);
   }
 
-  rb = (uint8_t*)(addr+1);
+  rb = (uint8_t*)((int)addr+1);
   if (*rb != 0x01) {
-    Serial.println("reg test byte 1 failed");
+    Serial.println("reg test byte 1 failed SB 0x01 is: ");
+    Serial.println(*rb, HEX);
   }
 
-  rb = (uint8_t*)(addr+2);
+  rb = (uint8_t*)((int)addr+2);
   if (*rb != 0x02) {
-    Serial.println("reg test byte 2 failed");
+    Serial.println("reg test byte 2 failed SB 0x02 is: ");
+    Serial.println(*rb, HEX);
   }
 
-  rb = (uint8_t*)(addr+3);
+  rb = (uint8_t*)((int)addr+3);
   if (*rb != 0x03) {
-    Serial.println("reg test byte 3 failed");
+    Serial.println("reg test byte 3 failed SB 0x03 is: ");
+    Serial.println(*rb, HEX);
   }
 
   //
@@ -421,50 +502,58 @@ void register_test32(void* addr)
   rb = (uint8_t*)(addr);
   *rb = 0xFF;
   if (*r != 0x030201FF) {
-    Serial.println("reg test write byte 0 failed");
+    Serial.println("reg test write byte 0 failed SB 0x030201FF is: ");
+    Serial.println(*r, HEX);
   }
 
-  rb = (uint8_t*)(addr+1);
+  rb = (uint8_t*)((int)addr+1);
   *rb = 0xFF;
   if (*r != 0x0302FFFF) {
-    Serial.println("reg test write byte 1 failed");
+    Serial.println("reg test write byte 1 failed SB 0x0302FFFF is: ");
+    Serial.println(*r, HEX);
   }
 
-  rb = (uint8_t*)(addr+2);
+  rb = (uint8_t*)((int)addr+2);
   *rb = 0xFF;
   if (*r != 0x03FFFFFF) {
-    Serial.println("reg test write byte 2 failed");
+    Serial.println("reg test write byte 2 failed SB 0x03FFFFFF is: ");
+    Serial.println(*r, HEX);
   }
 
-  rb = (uint8_t*)(addr+3);
+  rb = (uint8_t*)((int)addr+3);
   *rb = 0xFF;
   if (*r != 0xFFFFFFFF) {
-    Serial.println("reg test write byte 3 failed");
+    Serial.println("reg test write byte 4 failed SB 0xFFFFFFFF is: ");
+    Serial.println(*r, HEX);
   }
-
 
   //
   // Word write
   //
 
+  // write word
   rw = (uint16_t*)(addr);
   *rw = 0xAAAA;
+
+  // read 32 bits
   if (*r != 0xFFFFAAAA) {
-    Serial.println("reg test write word 0 failed");
+    Serial.println("reg test write word 0 failed SB 0xFFFFAAAA is: ");
+    Serial.println(*r, HEX);
   }
 
-  rw = (uint16_t*)(addr+2);
+  rw = (uint16_t*)((int)addr+2);
   *rw = 0x5555;
-  if (*r != 0xFFFFAAAA) {
-    Serial.println("reg test write byte 1 failed");
+  if (*r != 0x5555AAAA) {
+    Serial.println("reg test write word 1 failed SB 0x5555AAAA is: ");
+    Serial.println(*r, HEX);
   }
 
   // Back to zero
   *r = 0x00000000;
   if (*r != 0x00000000) {
-    Serial.println("reg test back to zero failed");
+    Serial.println("reg test back to zero failed SB 0x00000000 is: ");
+    Serial.println(*r, HEX);
   }
-
 }
 
 //
@@ -481,65 +570,91 @@ void sdr_registers_test()
   *r = 0x03020100;
 
   if (*r != 0x03020100) {
-    Serial.println("reg test 0 failed");
+    Serial.println("reg test 0 failed SB 0x03020100 is: ");
+    Serial.println(*r, HEX);
   }
 
   r = (volatile uint32_t *)SDR_CONTROL1;
   *r = 0x07060504;
 
   if (*r != 0x07060504) {
-    Serial.println("reg test 1 failed");
+    Serial.println("reg test 1 failed SB 0x07060504 is: ");
+    Serial.println(*r, HEX);
   }
 
   r = (volatile uint32_t *)SDR_CONTROL2;
   *r = 0x0B0A0908;
 
   if (*r != 0x0B0A0908) {
-    Serial.println("reg test 2 failed");
+    Serial.println("reg test 2 failed SB 0x0B0A0908 is: ");
+    Serial.println(*r, HEX);
   }
 
   r = (volatile uint32_t *)SDR_CONTROL3;
   *r = 0x0F0E0D0C;
 
   if (*r != 0x0F0E0D0C) {
-    Serial.println("reg test 3 failed");
+    Serial.println("reg test 3 failed SB 0x0F0E0D0C is: ");
+    Serial.println(*r, HEX);
   }
 
   //
   // Validate byte, word, and long read and writes.
   //
-  register_test32(SDR_CONTROL0);
-  register_test32(SDR_CONTROL1);
-  register_test32(SDR_CONTROL2);
-  register_test32(SDR_CONTROL3);
+  register_test32((void*)SDR_CONTROL0);
+  register_test32((void*)SDR_CONTROL1);
+  register_test32((void*)SDR_CONTROL2);
+  register_test32((void*)SDR_CONTROL3);
 }
 
 //
 // Determine largest memory block that can be allocated.
 //
-void
-memory_test()
+void*
+allocate_largest_block_possible()
 {
-    char* p;
+    void* p;
     int length;
 
     length = 1024*1024;
 
     while(1) {
 
-        p = (char*)malloc(length);
+        p = malloc(length);
         if (p == NULL) {
             length = length / 2;
             continue;
         }
 
-        Serial.print("Memory Test: Allocated");
+        Serial.print("Memory Test: Allocated: ");
         Serial.println(length, HEX);
 
         memset(p, 0, length);
 
-        free(p);
-
-        return;
+        return p;
     }
+
+    // out of memory
+    return NULL;
+}
+
+void
+memory_test()
+{
+    void* p1;
+    void* p2;
+    void* p3;
+    void* p4;
+
+    p1 = allocate_largest_block_possible();
+    p2 = allocate_largest_block_possible();
+    p3 = allocate_largest_block_possible();
+    p4 = allocate_largest_block_possible();
+
+    if (p1 != NULL) free(p1);
+    if (p2 != NULL) free(p2);
+    if (p3 != NULL) free(p3);
+    if (p4 != NULL) free(p4);
+
+    return;
 }
