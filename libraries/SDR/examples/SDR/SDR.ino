@@ -607,11 +607,31 @@ void sdr_registers_test()
   register_test32((void*)SDR_CONTROL3);
 }
 
+void
+memory_verify(void* addr, int length, uint8_t pattern)
+{
+    uint8_t* p = (uint8_t*)addr;
+
+    for (int index = 0; index < length; index++) {
+      if (*p != pattern) {
+        Serial.print("Pattern mismatch Addr: ");
+        Serial.print((uint32_t)p, HEX);
+        Serial.print(" SB: ");
+        Serial.print(pattern, HEX);
+        Serial.print(" IS: ");
+        Serial.println(*p, HEX);
+        return;
+      }
+
+      p++;
+    }
+}
+
 //
 // Determine largest memory block that can be allocated.
 //
 void*
-allocate_largest_block_possible()
+allocate_largest_block_possible(char pattern, int* plength)
 {
     void* p;
     int length;
@@ -629,7 +649,9 @@ allocate_largest_block_possible()
         Serial.print("Memory Test: Allocated: ");
         Serial.println(length, HEX);
 
-        memset(p, 0, length);
+        memset(p, pattern, length);
+
+        *plength = length;
 
         return p;
     }
@@ -645,16 +667,36 @@ memory_test()
     void* p2;
     void* p3;
     void* p4;
+    int length1;
+    int length2;
+    int length3;
+    int length4;
 
-    p1 = allocate_largest_block_possible();
-    p2 = allocate_largest_block_possible();
-    p3 = allocate_largest_block_possible();
-    p4 = allocate_largest_block_possible();
+    p1 = allocate_largest_block_possible(0x55, &length1);
+    p2 = allocate_largest_block_possible(0xAA, &length2);
+    p3 = allocate_largest_block_possible(0x01, &length3);
+    p4 = allocate_largest_block_possible(0xFE, &length4);
 
-    if (p1 != NULL) free(p1);
-    if (p2 != NULL) free(p2);
-    if (p3 != NULL) free(p3);
-    if (p4 != NULL) free(p4);
+    if (p1 != NULL) {
+      memory_verify(p1, length1, 0x55);
+      free(p1);
+    }
+
+    if (p2 != NULL) {
+      memory_verify(p2, length2, 0xAA);
+      free(p2);
+    }
+
+    if (p3 != NULL) {
+      memory_verify(p3, length3, 0x01);
+      free(p3);
+    }
+
+    if (p4 != NULL) {
+      memory_verify(p4, length4, 0xFE);
+      free(p4);
+    }
 
     return;
 }
+
