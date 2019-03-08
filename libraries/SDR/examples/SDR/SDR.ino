@@ -442,6 +442,66 @@ ProcessUserInput(PAPPLICATION_VARS p)
 }
 
 //
+// Look for aliases for the registers.
+//
+void register_alias_test()
+{
+  volatile uint32_t *r;
+
+  r = (volatile uint32_t *)SDR_CONTROL0;
+  *r = SDR_CONTROL0;
+  if (*r != SDR_CONTROL0) {
+    Serial.print("reg test failed SB SDR_CONTROL0 is: ");
+    Serial.println(*r, HEX);
+  }
+
+  r = (volatile uint32_t *)SDR_CONTROL1;
+  *r = SDR_CONTROL1;
+  if (*r != SDR_CONTROL1) {
+    Serial.print("reg test failed SB SDR_CONTROL1 is: ");
+    Serial.println(*r, HEX);
+  }
+
+  r = (volatile uint32_t *)SDR_CONTROL2;
+  *r = SDR_CONTROL2;
+  if (*r != SDR_CONTROL2) {
+    Serial.print("reg test failed SB SDR_CONTROL2 is: ");
+    Serial.println(*r, HEX);
+  }
+
+  r = (volatile uint32_t *)SDR_CONTROL3;
+  *r = SDR_CONTROL3;
+  if (*r != SDR_CONTROL3) {
+    Serial.print("reg test failed SB SDR_CONTROL3 is: ");
+    Serial.println(*r, HEX);
+  }
+
+  //
+  // Now look for aliases in the I/O range from
+  // 0xFFFFF800 - 0xFFFFFFFF
+  //
+  // Note: The register range will show up, and any
+  // undecoded bits will as well. Still a handy test.
+  //
+
+  r = (volatile uint32_t*)0xFFFFF800;
+
+  // Going to get 32 bit wrap around
+  while((r != 0) && (r < (uint32_t*)0xFFFFFFFC)) {
+
+    if ((*r == SDR_CONTROL0) || (*r == SDR_CONTROL1) ||
+        (*r == SDR_CONTROL2) || (*r == SDR_CONTROL3)) {
+        Serial.print("Possible wrap around. Address: ");
+        Serial.print((uint32_t)r, HEX);
+        Serial.print(" Data: ");
+        Serial.println(*r, HEX);
+    }
+
+    r++;
+  }
+}
+
+//
 // Test 32 bit register including byte and word read/write access.
 //
 void register_test32(void* addr)
@@ -605,6 +665,11 @@ void sdr_registers_test()
   register_test32((void*)SDR_CONTROL1);
   register_test32((void*)SDR_CONTROL2);
   register_test32((void*)SDR_CONTROL3);
+
+  //
+  // Look for aliases in the I/O space.
+  //
+  register_alias_test();
 }
 
 void
