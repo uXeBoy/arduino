@@ -89,6 +89,18 @@ typedef struct _APPLICATION_VARS {
 
 APPLICATION_VARS G_app;
 
+void fm_rds_on()
+{
+    uint32_t cr = 
+        FMRDS_CONTROL_CW_ENABLE |
+        FMRDS_CONTROL_MODULATOR_ENABLE |
+        FMRDS_CONTROL_RDS_DATA_ENABLE;       
+
+    rds.WriteControlRegister(cr);
+
+    digitalWrite(led, HIGH);
+}
+
 void carrier_on()
 {
     uint32_t cr = FMRDS_CONTROL_CW_ENABLE;
@@ -130,7 +142,6 @@ void am_tone(int half_period, int count)
     }
 }
 
-
 class CwKeyer : public MorseKeyer {
 
 public:
@@ -170,6 +181,7 @@ void sdr_registers_test();
 void memory_test();
 
 void generate_sinewave();
+void sdr_pcm_send_sine_wave();
 
 void ProcessUserInput(PAPPLICATION_VARS p);
 
@@ -266,6 +278,9 @@ fm_rds_setup(PAPPLICATION_VARS p)
   rds.Hz(FM_FREQUENCY); // Hz carrier wave frequency
 
   rds.length(260); // bytes message length (260 default)
+
+  // Set control register to enable carrier, modulation, FM RDS modulator.
+  fm_rds_on();
 }
 
 void
@@ -346,6 +361,8 @@ void fm_rds_registers_display(PAPPLICATION_VARS p)
 int
 ProcessUserInputWorker(PAPPLICATION_VARS p)
 {
+    static bool fm_rds_init = FALSE;
+
     if (Serial.available()) {
         p->Ch = Serial.read();
     }
@@ -399,13 +416,22 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             break;
 
         case 'q':
-            // Sine or synthesis
+            // test sine wave generation/math
             generate_sinewave();
+            break;
+
+        case 'Q':
+            // Sine wave synthesis
+            sdr_pcm_send_sine_wave();
             break;
 
         case 'r':
             // RDS on
-            fm_rds_setup(p);
+            if (fm_rds_init == FALSE) {
+                fm_rds_setup(p);
+                fm_rds_init = TRUE;
+            }
+
             fm_rds_registers_display(p);
             break;
 
@@ -475,7 +501,8 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             Serial.println("r - FM RDS on, R - FM RDS off");
             Serial.println("f - Display frequency, F - Set frequency");
             Serial.println("m - Morse CW test");
-            Serial.println("q - Synthesize sine wave PCM modulation");
+            Serial.println("q - Show test sine wave");
+            Serial.println("Q - Synthesize sine wave PCM modulation");
             Serial.println("Z - Registers test");
             Serial.println("z - Memory Test");
             Serial.println("v - Verbose on, V - Verbose off");
@@ -768,36 +795,6 @@ void sdr_pcm_test()
   return;
 }
 
-void sdr_pcm_send_sine_wave()
-{
-  // send sine wave for number of seconds
-  // Add frequency parameter.
-
-  //
-  // Keep a counter for when the PCM_DATA register is empty after
-  // calculating next sine point.
-  //
-  //  - The register should still be full from the previous sample.
-  //
-  //    Not having to wait to send the next sample means a gap in the
-  //    PCM stream ocurred since synthesis took to long.
-  //
-
-  // int ret;
-  // int missed = 0;
-  // int timeout = 10000;
-  //
-  // ret = sdr_pcm_send_data(data, timeout);
-  // if (ret == 0) {
-  //     missed++;
-  // }
-  // else if (ret == timeout) {
-  //    // Not accepting data, error
-  // }
-  //
-
-}
-
 //
 // This tests the SDR registers.
 //
@@ -956,24 +953,23 @@ generate_sinewave()
     double rad_increment;
     double deg_increment;
     int index;
+    int16_t pcm_data_16;
 
     // Samples for whole sine wave
     int sampleMax = 48;
 
     // Top of 16 bit PCM positive range
-    //double top = 1.0;
+    //double top = 1.0; // Used to validate sine curve baseline
     double top = 32767.0;
 
     Serial.println("Generate SineWave: ");
 
     //
-    // Positive half of the sine wave
-    //
     // PI day, 03/14/2019. Arduino sine function is in radians.
     //
-    rad_increment = 3.14 / (double)(sampleMax / 2);
+    rad_increment = (2.0 * 3.14) / (double)(sampleMax);
 
-    deg_increment = 180 / (double)(sampleMax / 2);
+    deg_increment = 360 / (double)(sampleMax);
 
     Serial.print("rad_increment: ");
     Serial.println(rad_increment);
@@ -981,11 +977,9 @@ generate_sinewave()
     Serial.print("deg_increment: ");
     Serial.println(deg_increment);
 
-    Serial.println("Positive Half:");
-
     rad = 0.0;
     deg = 0.0;
-    for (index = 0; index < sampleMax / 2; index++) {
+    for (index = 0; index < sampleMax; index++) {
 
         mag = sin(rad) * top;
 
@@ -994,24 +988,11 @@ generate_sinewave()
         Serial.print(mag);
         Serial.println("");
 
-        // Use a simple add in the main loop rather than multiply by ratio
-        rad = rad + rad_increment;
-        deg = deg + deg_increment;
-    }
+        // Downcast, hopefully the sign survives
+        pcm_data_16 = (int16_t)mag;
 
-    Serial.println("Negative Half:");
-
-    // Negative half of the sine wave
-    rad = 0.0;
-    deg = 0.0;
-    for (index = 0; index < sampleMax / 2; index++) {
-
-        mag = -(sin(rad) * top);
-
-        Serial.print(deg);
-        Serial.print(": ");
-        Serial.print(mag);
-        Serial.println("");
+        Serial.print("signed16: ");
+        Serial.println(pcm_data_16);
 
         // Use a simple add in the main loop rather than multiply by ratio
         rad = rad + rad_increment;
@@ -1019,6 +1000,89 @@ generate_sinewave()
     }
 
     return;
+}
+
+void
+sdr_pcm_send_sine_wave()
+{
+    double rad;
+    double mag;
+    double rad_increment;
+    int index;
+    int16_t pcm_data_16;
+    int ret;
+    uint32_t pcm_data;
+    int missed = 0;
+    int timeout = 10000;
+    int sendLoops = 1000 * 10; // 10 seconds for 1000Hz sine wave
+    int loopIndex;
+
+    // Samples for whole sine wave
+    int sampleMax = 48;
+
+    // Top of 16 bit PCM positive range
+    double top = 32767.0;
+
+    Serial.println("Send SineWave: ");
+
+    //
+    // PI day, 03/14/2019. Arduino sine function is in radians.
+    //
+    rad_increment = (2.0 * 3.14) / (double)(sampleMax);
+
+    //Serial.print("rad_increment: ");
+    //Serial.println(rad_increment);
+
+    for (loopIndex = 0; loopIndex < sendLoops; loopIndex++) {
+
+        //
+        // This generate one complete sine wave cycle
+        //
+    	rad = 0.0;
+	for (index = 0; index < sampleMax; index++) {
+
+	    mag = sin(rad) * top;
+
+	    // Downcast, hopefully the sign survives
+	    pcm_data_16 = (int16_t)mag;
+
+            // Send same signal to L+R channels
+            pcm_data = (pcm_data_16 << 16) | pcm_data_16;
+    
+    	    ret = sdr_pcm_send_data(pcm_data, timeout);
+	    if (ret == 0) {
+		missed++;
+	    }
+	    else if (ret == timeout) {
+	       // Not accepting data, error
+	       Serial.println("Timeout sending Sine Wave");
+	       return;
+	    }
+
+	    // Use a simple add in the main loop rather than multiply by ratio
+	    rad = rad + rad_increment;
+	}
+    }
+
+    Serial.print("Send Sine Wave Done, missed PCM samples: ");
+    Serial.println(missed);
+
+    return;
+
+  // send sine wave for number of seconds
+  // Add frequency parameter.
+
+  //
+  // Keep a counter for when the PCM_DATA register is empty after
+  // calculating next sine point.
+  //
+  //  - The register should still be full from the previous sample.
+  //
+  //    Not having to wait to send the next sample means a gap in the
+  //    PCM stream ocurred since synthesis took to long.
+  //
+
+
 }
 
 //
