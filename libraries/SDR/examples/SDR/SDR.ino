@@ -10,17 +10,22 @@
   TODO:
    #Bring in Arduino morse program.
    #Add serial console UI to allow commands, frequency change, morse/RDS messages.
-   Add R/W test code for new SDR registers.
+   #Add R/W test code for new SDR registers.
    A 1Khz signal generation using delay(1) (actually 500hz with 1ms on/off)
+    - better: added RTL logic in SDR SOC to pace a 48Khz PCM sample rate
    Add support for hardware PWM modulation
    Connect FM PCM modulation.
    Test sound sample.
    AM modulation experiments
+   I+Q support
    SSB modulation experiments
    Port WSPR
    Other ham digital modes.
+   Receiver support
+   Integrate with SoftRock, etc.
 */
 
+// Serial port baud rate for Serial Monitor, UI
 #define BAUD_RATE 115000
 
 //
@@ -39,6 +44,12 @@
 //
 #define FM_FREQUENCY 107900000
 
+#define FM_RDS_PROGRAM_IDENTIFIER 0xCAFE
+
+#define FM_RDS_PROGRAM_SERVICE "MenloSDR"
+
+#define FM_RDS_SIGN_ON_RADIO_TEXT "FPGA Radio from DE10-Lite ..."
+
 /*
 This is a test program that dynamically updates RDS message.
 AUTHOR=EMARD
@@ -55,10 +66,6 @@ int led = 13;
 // RDS is an operating mode of SDR for FM Radio Data System (RDS) display.
 RDS rds = RDS();
 
-uint16_t pi = 0xCAFE;
-char ps[9] = "TEST1234";
-char rt[65] = "ABCDEFGH";
-
 //
 // Keep application variables in one struct.
 //
@@ -72,6 +79,11 @@ typedef struct _APPLICATION_VARS {
     bool fm_modulation_on;
     bool am_modulation_on;
     bool morse_on;
+
+    // FM RDS support
+    uint16_t pi;      // Program Identification Code (national networks, etc.)
+    char ps[9];       // Program Service
+    char rt[65];      // Radio Text
 
 } *PAPPLICATION_VARS, APPLICATION_VARS;
 
@@ -143,7 +155,10 @@ CwKeyer G_Keyer;
 
 MorseSync G_Morse;
 
+// Forward References
 void fm_rds_setup(PAPPLICATION_VARS p);
+void fm_rds_message(PAPPLICATION_VARS p, char*, char*);
+
 void fm_rds_loop(PAPPLICATION_VARS p);
 
 void sw_cw_setup(PAPPLICATION_VARS p);
@@ -153,6 +168,8 @@ void sw_am_test(PAPPLICATION_VARS p);
 
 void sdr_registers_test();
 void memory_test();
+
+void generate_sinewave();
 
 void ProcessUserInput(PAPPLICATION_VARS p);
 
@@ -219,24 +236,84 @@ sw_am_test(PAPPLICATION_VARS p)
 //
 // Setup to transmit FM RDS data.
 //
-void fm_rds_setup(PAPPLICATION_VARS p) {
-  // int i;
+void
+fm_rds_setup(PAPPLICATION_VARS p)
+{
   unsigned int i;
 
-  for(i = 0; i < sizeof(rt)-1; i++) {
-    rt[i] = '@'+i; // ascii map
+  p->pi = FM_RDS_PROGRAM_IDENTIFIER;
+
+  for(i = 0; i < sizeof(p->ps)-1; i++) {
+    p->ps[i] = ' ';
   }
 
+  for(i = 0; i < sizeof(p->rt)-1; i++) {
+    p->rt[i] = ' ';
+  }
+
+  snprintf(p->ps, sizeof(p->ps), "%s", FM_RDS_PROGRAM_SERVICE);
+
+  snprintf(p->rt, sizeof(p->rt), "%s", FM_RDS_SIGN_ON_RADIO_TEXT);
+
   /* Setup initial RDS text */
-  rds.pi(pi); // station numeric ID
+  rds.pi(p->pi); // Program Identifier (network or station ID)
   rds.stereo(0); // 0-Inform over RDS that we send Mono, 1-Stereo
+
   rds.ta(0);  // 0-No, 1-Traffic Announcements
-  rds.ps(ps); // 8-char text, displayed as station name
-  rds.rt(rt); // 64-char text, not every radio displays it
+  rds.ps(p->ps); // Program Service, 8-char text, displayed as station name
+  rds.rt(p->rt); // Radio Text, 64-char text, not every radio displays it
 
   rds.Hz(FM_FREQUENCY); // Hz carrier wave frequency
 
   rds.length(260); // bytes message length (260 default)
+}
+
+void
+fm_rds_message(
+    PAPPLICATION_VARS p,
+    char* programService,
+    char* radioText
+    )
+{
+  static uint8_t number;
+
+  if (programService != NULL) {
+      // Max 8 characters + NULL
+      snprintf(p->ps, sizeof(p->ps), "%s", programService);
+
+      rds.ps(p->ps); // Program Service
+  }
+
+  if (radioText != NULL) {
+      snprintf(p->rt, sizeof(p->rt), "%05d: %s", number % 100000, radioText);
+
+      number++; // increment message number
+
+      rds.rt(p->rt); // Radio Text
+  }
+
+  //rds.ct(2015,7,22,15,30,900); // Clock Time and Data
+
+  // print actual status on serial
+  Serial.print("0x");
+  Serial.print(p->pi, HEX);
+  Serial.print(" ");
+  Serial.print(p->ps);
+  Serial.print(" ");
+  Serial.println(p->rt);
+
+  return;
+}
+
+void fm_rds_loop(PAPPLICATION_VARS p)
+{
+  static char l_rt[65];      // Radio Text
+
+  snprintf(l_rt, sizeof(l_rt), "FPGA Radio from DE10Lite");
+
+  fm_rds_message(p, NULL, l_rt);
+  
+  delay(2000); // wait 2 seconds
 }
 
 //
@@ -263,30 +340,9 @@ void fm_rds_registers_display(PAPPLICATION_VARS p)
   Serial.println(*r);
 }
 
-void fm_rds_loop(PAPPLICATION_VARS p)
-{
-  static uint8_t number;
-
-  snprintf(ps, sizeof(ps), "TEST%04d", number % 10000);
-  snprintf(rt, sizeof(rt), "%05d Zzz...", number % 100000);
-
-  // send strings for transmission
-  rds.ps(ps);
-  rds.rt(rt);
-  // rds.ct(2015,7,22,15,30,900);
-
-  // print actual status on serial
-  Serial.print("0x");
-  Serial.print(pi, HEX);
-  Serial.print(" ");
-  Serial.print(ps);
-  Serial.print(" ");
-  Serial.println(rt);
-
-  delay(2000); // wait 2 seconds
-  number++; // increment number
-}
-
+//
+// UserInterface
+// UI
 int
 ProcessUserInputWorker(PAPPLICATION_VARS p)
 {
@@ -324,14 +380,6 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             Serial.println("CW carrier FF");
             break;
 
-        case 's':
-            // FM Modulation on
-            break;
-
-        case 'S':
-            // FM Modulation off
-            break;
-
         case 'f':
             // Display frequency
             break;
@@ -350,6 +398,11 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             // Morse Code off
             break;
 
+        case 'q':
+            // Sine or synthesis
+            generate_sinewave();
+            break;
+
         case 'r':
             // RDS on
             fm_rds_setup(p);
@@ -360,11 +413,12 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             // RDS off
             break;
 
-        case 'Z':
-            // Registers test
-            Serial.print("Registers Test...");
-            sdr_registers_test();
-            Serial.println(" Done.");
+        case 's':
+            // FM Modulation on
+            break;
+
+        case 'S':
+            // FM Modulation off
             break;
 
         case 'v':
@@ -381,6 +435,13 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             // Memory test
             Serial.print("Memory Test...");
             memory_test();
+            Serial.println(" Done.");
+            break;
+
+        case 'Z':
+            // Registers test
+            Serial.print("Registers Test...");
+            sdr_registers_test();
             Serial.println(" Done.");
             break;
 
@@ -414,6 +475,7 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             Serial.println("r - FM RDS on, R - FM RDS off");
             Serial.println("f - Display frequency, F - Set frequency");
             Serial.println("m - Morse CW test");
+            Serial.println("q - Synthesize sine wave PCM modulation");
             Serial.println("Z - Registers test");
             Serial.println("z - Memory Test");
             Serial.println("v - Verbose on, V - Verbose off");
@@ -616,6 +678,126 @@ void register_test32(void* addr)
   }
 }
 
+// Timeout in milliseconds
+uint32_t
+sdr_pcm_wait_for_ready(int timeout)
+{
+  volatile uint32_t *r_cs;
+  uint32_t status;
+  int index;
+
+  r_cs = (volatile uint32_t *)SDR_PCM_CS;
+
+  status = *r_cs;
+
+  if ((status & FMRDS_CONTROL_PCM_FULL) == 0) {
+      return status;
+  }
+
+  // Wait for PCM data ready (not full condition)
+  for (index = 0; index < timeout; index++) {
+
+      status = *r_cs;
+
+      if ((status & FMRDS_CONTROL_PCM_FULL) == 0) {
+          return status;
+      }
+
+      delay(1);
+  }
+
+  return status;
+}
+
+//
+// Returns 0 if no wait.
+//
+// Returns value of wait loop if data has been written.
+//
+// Returns timeout value if timed out.
+//
+int
+sdr_pcm_send_data(uint32_t data, int timeout)
+{
+  volatile uint32_t *r_cs;
+  volatile uint32_t *r_pcm_data;
+  uint32_t status;
+  int index;
+
+  r_cs = (volatile uint32_t *)SDR_PCM_CS;
+
+  // R (31 downto 16) L (15 downto 0)
+  r_pcm_data = (volatile uint32_t*)SDR_PCM_DATA;
+
+  status = *r_cs;
+
+  if ((status & FMRDS_CONTROL_PCM_FULL) == 0) {
+      *r_pcm_data = data;
+      return 0; // no wait
+  }
+
+  // Wait for PCM data ready (not full condition)
+  for (index = 0; index < timeout; index++) {
+
+      status = *r_cs;
+
+      if ((status & FMRDS_CONTROL_PCM_FULL) == 0) {
+          *r_pcm_data = data;
+          return index;
+      }
+  }
+
+  return timeout;
+}
+
+void sdr_pcm_test()
+{
+  uint32_t status;
+  volatile uint32_t *r_pcm_data;
+
+  // R (31 downto 16) L (15 downto 0)
+  r_pcm_data = (volatile uint32_t*)SDR_PCM_DATA;
+
+  status = sdr_pcm_wait_for_ready(1000);
+  if (status & FMRDS_CONTROL_PCM_FULL) {
+    // Timeout
+  }
+
+  *r_pcm_data = 0x00000000;
+
+  return;
+}
+
+void sdr_pcm_send_sine_wave()
+{
+  // send sine wave for number of seconds
+  // Add frequency parameter.
+
+  //
+  // Keep a counter for when the PCM_DATA register is empty after
+  // calculating next sine point.
+  //
+  //  - The register should still be full from the previous sample.
+  //
+  //    Not having to wait to send the next sample means a gap in the
+  //    PCM stream ocurred since synthesis took to long.
+  //
+
+  // int ret;
+  // int missed = 0;
+  // int timeout = 10000;
+  //
+  // ret = sdr_pcm_send_data(data, timeout);
+  // if (ret == 0) {
+  //     missed++;
+  // }
+  // else if (ret == timeout) {
+  //    // Not accepting data, error
+  // }
+  //
+
+}
+
 //
 // This tests the SDR registers.
 //
@@ -765,3 +947,137 @@ memory_test()
     return;
 }
 
+void
+generate_sinewave()
+{
+    double rad;
+    double deg;
+    double mag;
+    double rad_increment;
+    double deg_increment;
+    int index;
+
+    // Samples for whole sine wave
+    int sampleMax = 48;
+
+    // Top of 16 bit PCM positive range
+    //double top = 1.0;
+    double top = 32767.0;
+
+    Serial.println("Generate SineWave: ");
+
+    //
+    // Positive half of the sine wave
+    //
+    // PI day, 03/14/2019. Arduino sine function is in radians.
+    //
+    rad_increment = 3.14 / (double)(sampleMax / 2);
+
+    deg_increment = 180 / (double)(sampleMax / 2);
+
+    Serial.print("rad_increment: ");
+    Serial.println(rad_increment);
+
+    Serial.print("deg_increment: ");
+    Serial.println(deg_increment);
+
+    Serial.println("Positive Half:");
+
+    rad = 0.0;
+    deg = 0.0;
+    for (index = 0; index < sampleMax / 2; index++) {
+
+        mag = sin(rad) * top;
+
+        Serial.print(deg);
+        Serial.print(": ");
+        Serial.print(mag);
+        Serial.println("");
+
+        // Use a simple add in the main loop rather than multiply by ratio
+        rad = rad + rad_increment;
+        deg = deg + deg_increment;
+    }
+
+    Serial.println("Negative Half:");
+
+    // Negative half of the sine wave
+    rad = 0.0;
+    deg = 0.0;
+    for (index = 0; index < sampleMax / 2; index++) {
+
+        mag = -(sin(rad) * top);
+
+        Serial.print(deg);
+        Serial.print(": ");
+        Serial.print(mag);
+        Serial.println("");
+
+        // Use a simple add in the main loop rather than multiply by ratio
+        rad = rad + rad_increment;
+        deg = deg + deg_increment;
+    }
+
+    return;
+}
+
+//
+// Sine Wave with 48 samples
+//
+// 24 samples "+" side, 24 samples "-" side.
+//
+// The 16 bit number represents 16 bit signed PCM audio
+// so numbers with bit 15 set are negative.
+//
+// Note that are in decimal here so range from 0 - 65535.
+//
+uint16_t Sinewave[] = {
+    0,
+    4276,
+    8480,
+    12539,
+    16383,
+    19947,
+    23169,
+    25995,
+    28377,
+    30272,
+    31650,
+    32486,
+    32767,
+    32486,
+    31650,
+    30272,
+    28377,
+    25995,
+    23169,
+    19947,
+    16383,
+    12539,
+    8480,
+    4276, // 24 entries
+    0,
+    61259,
+    57056,
+    52997,
+    49153,
+    45589,
+    42366,
+    39540,
+    37159,
+    35263,
+    33885,
+    33049,
+    32768,
+    33049,
+    33885,
+    35263,
+    37159,
+    39540,
+    42366,
+    45589,
+    49152,
+    52997,
+    57056,
+    61259  // 48 entries
+    };
