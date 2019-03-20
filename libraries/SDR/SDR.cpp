@@ -40,12 +40,12 @@
 #include "SDR.h"
 
 /* constructor does nothing */
-RDS::RDS()
+SDR::SDR()
 {
 }
 
 /* Classical CRC computation */
-uint16_t RDS::crc(uint16_t block) {
+uint16_t SDR::crc(uint16_t block) {
     uint16_t crc = 0;
     
     for(int j=0; j<RDS_BLOCK_SIZE; j++) {
@@ -64,7 +64,7 @@ uint16_t RDS::crc(uint16_t block) {
 
 
 // write block to the buffer and append the CRC
-void RDS::binary_buf_crc(uint8_t buffer[], uint16_t blocks[])
+void SDR::binary_buf_crc(uint8_t buffer[], uint16_t blocks[])
 {
     int bitptr = 0; // pointer to a bit in the buffer
 
@@ -92,7 +92,7 @@ void RDS::binary_buf_crc(uint8_t buffer[], uint16_t blocks[])
 // write buffer with n-th group of PS
 // PS consists of 4 groups of 13 bytes each numbered 0..3 
 // lower 2 bits of n define the group number
-void RDS::binary_ps_group(uint8_t *buffer, uint8_t group_number)
+void SDR::binary_ps_group(uint8_t *buffer, uint8_t group_number)
 {
   uint16_t blocks[RDS_GROUP_LENGTH] = {this->value_pi, 0, 0, 0};
   uint8_t gn = group_number & 3; // group number
@@ -120,7 +120,7 @@ void RDS::binary_ps_group(uint8_t *buffer, uint8_t group_number)
 // write buffer with n-th group of RT
 // RT consists of 16 groups of 13 bytes each numbered 0..15 
 // lower 4 bits of n define the group number
-void RDS::binary_rt_group(uint8_t *buffer, uint8_t group_number)
+void SDR::binary_rt_group(uint8_t *buffer, uint8_t group_number)
 {
   uint16_t blocks[RDS_GROUP_LENGTH] = {this->value_pi, 0, 0, 0};
   uint8_t gn = group_number & 15; // group number
@@ -133,7 +133,7 @@ void RDS::binary_rt_group(uint8_t *buffer, uint8_t group_number)
 }
 
 /* generates a CT (clock time) group */
-void RDS::binary_ct_group(uint8_t *buffer)
+void SDR::binary_ct_group(uint8_t *buffer)
 {
   uint16_t blocks[RDS_GROUP_LENGTH] = {this->value_pi, 0, 0, 0};
 
@@ -158,7 +158,7 @@ void RDS::binary_ct_group(uint8_t *buffer)
   binary_buf_crc(buffer, blocks);
 }
 
-void RDS::send_ps(void)
+void SDR::send_ps(void)
 {
   int rds_mem_offset = 0;
   uint8_t bit_buffer[RDS_BITS_PER_GROUP/8];
@@ -173,7 +173,7 @@ void RDS::send_ps(void)
   }
 }
 
-void RDS::send_rt(void)
+void SDR::send_rt(void)
 {
   int rds_mem_offset = 0;
   uint8_t bit_buffer[RDS_BITS_PER_GROUP/8];
@@ -190,7 +190,7 @@ void RDS::send_rt(void)
   }
 }
 
-void RDS::pi(uint16_t pi_code) // public
+void SDR::pi(uint16_t pi_code) // public
 {
     this->value_pi = pi_code;
     // PI changed - immediately recalculate checksums for all binaries
@@ -198,7 +198,7 @@ void RDS::pi(uint16_t pi_code) // public
     send_rt();
 }
 
-void RDS::new_rt(char *rt)
+void SDR::new_rt(char *rt)
 {
   size_t str_size = strlen(rt);
   if(str_size > RDS_RT_LENGTH)
@@ -207,13 +207,13 @@ void RDS::new_rt(char *rt)
   memcpy(this->string_rt, rt, str_size);
 }
 
-void RDS::rt(char *rt) // public
+void SDR::rt(char *rt) // public
 {
   new_rt(rt);
   send_rt();
 }
 
-void RDS::new_ps(char *ps)
+void SDR::new_ps(char *ps)
 {
   size_t str_size = strlen(ps);
   if(str_size > RDS_PS_LENGTH)
@@ -222,19 +222,19 @@ void RDS::new_ps(char *ps)
   memcpy(this->string_ps, ps, str_size);
 }
 
-void RDS::ps(char *ps) // public
+void SDR::ps(char *ps) // public
 {
   new_ps(ps);
   send_ps();
 }
 
-void RDS::ta(uint8_t ta) // public
+void SDR::ta(uint8_t ta) // public
 {
   this->signal_ta = ta;
   send_ps(); // PS block sends TA
 }
 
-void RDS::stereo(uint8_t stereo) // public
+void SDR::stereo(uint8_t stereo) // public
 {
   this->signal_stereo = stereo;
   send_ps(); // PS block sends TA
@@ -242,7 +242,7 @@ void RDS::stereo(uint8_t stereo) // public
 
 // fixme - CT group will overwrite last RT group
 // after time is send, RT should be refreshed
-void RDS::send_ct(void)
+void SDR::send_ct(void)
 {
   int rds_mem_offset = (RDS_BITS_PER_GROUP/8) * 19; // last RT group
   uint8_t bit_buffer[RDS_BITS_PER_GROUP/8];
@@ -255,7 +255,7 @@ void RDS::send_ct(void)
 }
 
 // public
-void RDS::ct(int16_t year, uint8_t mon, uint8_t mday, uint8_t hour, uint8_t min, int16_t gmtoff)
+void SDR::ct(int16_t year, uint8_t mon, uint8_t mday, uint8_t hour, uint8_t min, int16_t gmtoff)
 {
   this->tm_year = year-1900;
   this->tm_mon = mon;

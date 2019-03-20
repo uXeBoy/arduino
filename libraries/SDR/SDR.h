@@ -225,9 +225,9 @@
 #define RDS_RT_LENGTH 64
 #define RDS_PS_LENGTH 8
 
-class RDS {
+class SDR {
   public:
-    RDS();
+    SDR();
 
     //
     // those function have immediate effect
@@ -326,4 +326,3 @@ class RDS {
     // We don't handle offset word C' here for the sake of simplicity
 };
 #endif // _SDR_h
-

@@ -1,4 +1,59 @@
 
+//
+// TODO:
+//
+// 03/20/2019
+//
+//  Add real time scaled integer signal magnitude calculations.
+//
+//  Test half shift and add.
+//    Take the value, divide by 2 by shifting right once.
+//    Add this value to the base.
+//    You have just multiplied by 1.5X.
+//    Each bit is a power of 2 multiply.
+//    1X, 2X, 4X, 8X, 16X, 32X, 64X, 128X, 256X (9 steps)
+//
+//    This can be doubled using the 1/2 shift and add technique.
+//
+//    A modulation table can have the constants for the technique.
+//
+//    Each entry in the table represents the value to add to the baseline
+//    shifted by 1 (multiplied by 2). Lower bits represent the fraction.
+//
+// Delta Sigma Modulation
+// https://hackaday.io/project/162477-serial-port-sdr
+// https://hackaday.io/project/162477-serial-port-sdr/log/156449-multiple-modulation-methods
+//
+// 03/15/2019
+//
+// Sine wave generation in real time using floating point math misses
+// captures.
+//
+// 50Mhz 32 bit MIPS running from block ram, software floating point.
+//
+// 10 second duration takes actual 65 seconds (6X)
+// 
+// 48000 cycles out of 48000 cycles missed.
+//
+// Build a table and test that.
+//
+//  - Explore fixed point arithmetic for signal generation
+//    - shift samples over by 10-14 bits, use 32 bit fixed point arithmetic
+//      to generate signal from baseline and table to represent the sine/cosine.
+//
+//  - goal is to move real time signal generation to the FPGA as
+//    an RTL blocks.
+//
+//  - Generate I+Q signals using above table driven scaled integer
+//    techniques for moving to the FPGA.
+// 
+//  - Start writing the new signal synthesis modules in Verilog and
+//    just use VHDL for the wrapper in the project.
+//
+//  - Need to create a SoC template in Verilog, but for now it will be
+//    components instantiated from the sdr.vhd SoC.
+//
+
 /*
   03/03/2019
 
@@ -64,7 +119,7 @@ LICENSE=GPL
 int led = 13;
 
 // RDS is an operating mode of SDR for FM Radio Data System (RDS) display.
-RDS rds = RDS();
+SDR sdr = SDR();
 
 //
 // Keep application variables in one struct.
@@ -96,7 +151,7 @@ void fm_rds_on()
         FMRDS_CONTROL_MODULATOR_ENABLE |
         FMRDS_CONTROL_RDS_DATA_ENABLE;       
 
-    rds.WriteControlRegister(cr);
+    sdr.WriteControlRegister(cr);
 
     digitalWrite(led, HIGH);
 }
@@ -104,14 +159,14 @@ void fm_rds_on()
 void carrier_on()
 {
     uint32_t cr = FMRDS_CONTROL_CW_ENABLE;
-    rds.WriteControlRegister(cr);
+    sdr.WriteControlRegister(cr);
     digitalWrite(led, HIGH);
 }
 
 void carrier_off()
 {
     uint32_t cr = 0;
-    rds.WriteControlRegister(cr);
+    sdr.WriteControlRegister(cr);
     digitalWrite(led, LOW);
 }
 
@@ -129,12 +184,12 @@ void am_tone(int half_period, int count)
 
     for (int i = 0; i < count; i++) {
 
-        rds.WriteControlRegister(cr_on);
+        sdr.WriteControlRegister(cr_on);
         //digitalWrite(led, HIGH);
 
         delay(half_period);
 
-        rds.WriteControlRegister(cr_off);
+        sdr.WriteControlRegister(cr_off);
 
         delay(half_period);
 
@@ -148,7 +203,7 @@ public:
       CwKeyer() {
       }
 
-      void Initialize(RDS* sdr) {
+      void Initialize(SDR* sdr) {
           m_sdr = sdr;
       }
 
@@ -159,7 +214,7 @@ public:
       }
 
 private:
-      RDS* m_sdr;
+      SDR* m_sdr;
 };
 
 CwKeyer G_Keyer;
@@ -180,8 +235,19 @@ void sw_am_test(PAPPLICATION_VARS p);
 void sdr_registers_test();
 void memory_test();
 
-void generate_sinewave();
-void sdr_pcm_send_sine_wave();
+void generate_test_sinewave();
+void sdr_pcm_send_sine_wave_real_time();
+void sdr_pcm_send_sine_wave_table();
+
+void
+sdr_pcm_send_sine_wave_table_scaled(
+    int SamplesPerCycle,
+    int PcmRate,
+    double Frequency,
+    double Amplitude,
+    int    Time
+    );
+
 
 void ProcessUserInput(PAPPLICATION_VARS p);
 
@@ -221,7 +287,7 @@ void sw_cw_setup(PAPPLICATION_VARS p)
   frequency = SHORTWAVE_CW_FREQUENCY;
 
   // Set carrier frequency in Hertz
-  rds.Hz(frequency);
+  sdr.Hz(frequency);
 
   //carrier_on();
 }
@@ -240,8 +306,10 @@ void
 sw_am_test(PAPPLICATION_VARS p)
 {
   if (p->verbose) Serial.print("AM Tone Test...");
+
   // AM modulated tone, 500Hz, count for 10 seconds
   am_tone(1, 10000);
+
   if (p->verbose) Serial.println(" Done.");
 }
 
@@ -268,16 +336,16 @@ fm_rds_setup(PAPPLICATION_VARS p)
   snprintf(p->rt, sizeof(p->rt), "%s", FM_RDS_SIGN_ON_RADIO_TEXT);
 
   /* Setup initial RDS text */
-  rds.pi(p->pi); // Program Identifier (network or station ID)
-  rds.stereo(0); // 0-Inform over RDS that we send Mono, 1-Stereo
+  sdr.pi(p->pi); // Program Identifier (network or station ID)
+  sdr.stereo(0); // 0-Inform over RDS that we send Mono, 1-Stereo
 
-  rds.ta(0);  // 0-No, 1-Traffic Announcements
-  rds.ps(p->ps); // Program Service, 8-char text, displayed as station name
-  rds.rt(p->rt); // Radio Text, 64-char text, not every radio displays it
+  sdr.ta(0);  // 0-No, 1-Traffic Announcements
+  sdr.ps(p->ps); // Program Service, 8-char text, displayed as station name
+  sdr.rt(p->rt); // Radio Text, 64-char text, not every radio displays it
 
-  rds.Hz(FM_FREQUENCY); // Hz carrier wave frequency
+  sdr.Hz(FM_FREQUENCY); // Hz carrier wave frequency
 
-  rds.length(260); // bytes message length (260 default)
+  sdr.length(260); // bytes message length (260 default)
 
   // Set control register to enable carrier, modulation, FM RDS modulator.
   fm_rds_on();
@@ -296,7 +364,7 @@ fm_rds_message(
       // Max 8 characters + NULL
       snprintf(p->ps, sizeof(p->ps), "%s", programService);
 
-      rds.ps(p->ps); // Program Service
+      sdr.ps(p->ps); // Program Service
   }
 
   if (radioText != NULL) {
@@ -304,10 +372,10 @@ fm_rds_message(
 
       number++; // increment message number
 
-      rds.rt(p->rt); // Radio Text
+      sdr.rt(p->rt); // Radio Text
   }
 
-  //rds.ct(2015,7,22,15,30,900); // Clock Time and Data
+  //sdr.ct(2015,7,22,15,30,900); // Clock Time and Data
 
   // print actual status on serial
   Serial.print("0x");
@@ -416,13 +484,22 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             break;
 
         case 'q':
-            // test sine wave generation/math
-            generate_sinewave();
+
+            //sdr_pcm_send_sine_wave_table();
+
+            // Table driven sine wave synthesis
+            sdr_pcm_send_sine_wave_table_scaled(
+                16,    // SamplesPerCycle
+                48000, // PcmRate
+                (double)1000,  // Frequency
+                (double)32767, // Amplitude
+                10             // Time in seconds
+            );
             break;
 
         case 'Q':
-            // Sine wave synthesis
-            sdr_pcm_send_sine_wave();
+            // Real time sine wave synthesis
+            sdr_pcm_send_sine_wave_real_time();
             break;
 
         case 'r':
@@ -445,6 +522,11 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
 
         case 'S':
             // FM Modulation off
+            break;
+
+        case 't':
+            // test sine wave generation/math
+            generate_test_sinewave();
             break;
 
         case 'v':
@@ -495,17 +577,19 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
 	case 'H':
 	    // Help
 	    Serial.println(F("Menlo SDR Help:\r\n"));
+            Serial.println("a - AM modulation on, A AM modulation off");
             Serial.println("c - CW carrier on, C - CW Carrier off");
-            Serial.println("a - AM modulation test");
-            Serial.println("s - FM modulation on, S - FM modulation off");
-            Serial.println("r - FM RDS on, R - FM RDS off");
             Serial.println("f - Display frequency, F - Set frequency");
-            Serial.println("m - Morse CW test");
-            Serial.println("q - Show test sine wave");
-            Serial.println("Q - Synthesize sine wave PCM modulation");
-            Serial.println("Z - Registers test");
-            Serial.println("z - Memory Test");
+            Serial.println("m - Morse Code on, M - Morse Code off");
+            Serial.println("q - Synthesize sine wave PCM modulation (table driven)");
+            Serial.println("Q - Synthesize sine wave PCM modulation (real time)");
+            Serial.println("r - FM RDS on, R - FM RDS off");
+            Serial.println("s - FM modulation on, S - FM modulation off");
+            Serial.println("t - Show test sine wave calculations");
             Serial.println("v - Verbose on, V - Verbose off");
+            Serial.println("z - Memory Test");
+            Serial.println("Z - Registers test");
+            Serial.println("?, h, H - Help menu");
 	    break;    
 
     } // end switch
@@ -944,8 +1028,76 @@ memory_test()
     return;
 }
 
+//
+// Generate sinewave table for signed 16 bit PCM audio
+// in allocated memory.
+//
+// Samples - Number of samples for the sine wave
+//
+// Amplitude - Maximum amplitude of the wave form.
+//
+//                The generated sine wave is from:
+//
+//                0          90        180       270         360
+//                0 => +MaxAmplitude => 0 => -MaxAmplitude => 0
+//
+uint16_t*
+generate_sinewave_table(
+    double Samples,
+    double Amplitude
+    )
+{
+    double rad;
+    double rad_increment;
+    double mag;
+    int memorySize;
+    int index;
+    int16_t pcm_data_16;
+    uint16_t* array;
+
+    rad_increment = (2.0 * 3.14) / (double)(Samples);
+
+    memorySize = Samples * sizeof(uint16_t);
+
+    array = (uint16_t*)malloc(memorySize);
+    if (array == NULL) {
+        return NULL;
+    }
+
+    memset(array, 0, memorySize);
+
+    //
+    // This generates one complete sine wave cycle
+    //
+    rad = 0.0;
+    for (index = 0; index < Samples; index++) {
+
+        mag = sin(rad) * Amplitude;
+
+        //
+        // Downcast, caller must ensure the Amplitude fits with the
+        // signed 16 range of the PCM audio sample.
+        //
+        pcm_data_16 = (int16_t)mag;
+    
+        array[index] = pcm_data_16;
+    
+        rad = rad + rad_increment;
+    }
+
+    return array;
+}
+
+//
+// Generates a test sine wave and outputs it for math verification.
+//
+// Used for designing sine tables that will go into the synthesis blocks.
+//
 void
-generate_sinewave()
+generate_test_sinewave_worker(
+    int SamplesPerCycle,
+    double Amplitude
+    )
 {
     double rad;
     double deg;
@@ -956,13 +1108,12 @@ generate_sinewave()
     int16_t pcm_data_16;
 
     // Samples for whole sine wave
-    int sampleMax = 48;
+    int sampleMax = 16;
 
-    // Top of 16 bit PCM positive range
-    //double top = 1.0; // Used to validate sine curve baseline
-    double top = 32767.0;
-
-    Serial.println("Generate SineWave: ");
+    Serial.print("Generate SineWave: SamplesPerCycle: ");
+    Serial.print(SamplesPerCycle);
+    Serial.print(" Amplitude: ");
+    Serial.println(Amplitude);
 
     //
     // PI day, 03/14/2019. Arduino sine function is in radians.
@@ -981,7 +1132,7 @@ generate_sinewave()
     deg = 0.0;
     for (index = 0; index < sampleMax; index++) {
 
-        mag = sin(rad) * top;
+        mag = sin(rad) * Amplitude;
 
         Serial.print(deg);
         Serial.print(": ");
@@ -1003,7 +1154,307 @@ generate_sinewave()
 }
 
 void
-sdr_pcm_send_sine_wave()
+generate_test_sinewave()
+{
+    //
+    // Test scaled integers for sine wave tables.
+    //
+    // The more the magnitude is shifted from the 1.0
+    // base line, the less rounding occurs in the
+    // dropping of the fractional part when converted into the
+    // 16 bit integer entry in the table.
+    //
+    // A scaling by 8 (3 LSB's) provides reasonable accuracy
+    // while scaling by 256 (8 LSB's) is better, but not likely
+    // required for communications.
+    //
+    // Scaling by 16 is a sweet spot that supports 4 LSB's of
+    // the fractional component.
+    //
+    // Note that this magnitude scale becomes a "DC offset", and
+    // can be filtered out readily.
+    //
+    // The smallest value that provides the needed accuracy is
+    // desirable as this sets the lower floor of the dynamic
+    // range for the sine wave. Example: if 4 bits are used
+    // for the fraction, then 12 bits are available for the modulation
+    // range and represent 72.24 dB for modulation.
+    //
+    // The 16 bit signal itself has 96.33 dB of dynamic range.
+    //
+    // https://en.wikipedia.org/wiki/Audio_bit_depth
+    //
+    // Amplitude modulation of the sign wave now involves simple
+    // integer multiplication. Sticking to powers of two, half powers
+    // of two (shift and add) in an AM modulator can give a reasonable
+    // range without consuming multiplier units.
+    //
+    // Different oversample values are tried to see the effect
+    // on the fractional component, as oversampling would generate
+    // smaller differences in the fractional component and be
+    // subject to more distortion.
+    //
+
+    // Baseline with fractions
+    generate_test_sinewave_worker(16, (double)1.0);
+
+    // Full scale for 16 bit signed PCM
+    generate_test_sinewave_worker(16, (double)32767.0);
+
+    // Scaled by 256 for fixed integer math in RTL
+    generate_test_sinewave_worker(16, (double)256.0);
+
+    // Scaled by 16 for fixed integer math in RTL
+    // Use 16X oversampling for the test.
+    generate_test_sinewave_worker(32, (double)16.0);
+
+    // Scaled by 8 for fixed integer math in RTL
+    // Use 16X oversampling for the test.
+    generate_test_sinewave_worker(32, (double)8.0);
+
+    // Scaled by 256 for fixed integer math in RTL
+    // Use 32X oversampling for the test.
+    generate_test_sinewave_worker(64, (double)256.0);
+
+    // Scaled by 8 for fixed integer math in RTL
+    // Use 32X oversampling for the test.
+    generate_test_sinewave_worker(64, (double)8.0);
+}
+
+//
+// This uses a table driven approach to synthesizing a PCM
+// audio modulation sine wave.
+//
+void
+sdr_pcm_send_sine_wave_table()
+{
+    int missed = 0;
+    int timeout = 10000;
+    int16_t pcm_data_16;
+    uint32_t pcm_data;
+    int index;
+    int ret;
+    int loopIndex;
+    uint16_t* table = NULL;
+
+    double samples = 48.0;
+    double amplitude = 32767.0;
+
+    int sendLoops = 1000 * 10; // 10 seconds for 1000Hz sine wave
+
+    table = generate_sinewave_table(samples, amplitude);
+
+    Serial.println("Table Driven Send Sine Wave Start");
+
+    for (loopIndex = 0; loopIndex < sendLoops; loopIndex++) {
+
+        //
+        // This generates one complete sine wave cycle
+        //
+	for (index = 0; index < samples; index++) {
+
+	    pcm_data_16 = table[index];
+
+            // Send same signal to L+R channels
+            pcm_data = (pcm_data_16 << 16) | pcm_data_16;
+    
+    	    ret = sdr_pcm_send_data(pcm_data, timeout);
+	    if ((ret == 0) && (loopIndex != 0)) {
+		missed++;
+	    }
+	    else if (ret == timeout) {
+	       // Not accepting data, error
+	       Serial.println("Timeout sending Sine Wave");
+	       return;
+	    }
+	}
+    }
+
+    Serial.print("Table Driven Send Sine Wave Done, missed PCM samples: ");
+    Serial.println(missed);
+
+    return;
+}
+
+//
+// This uses a table driven approach to synthesizing a PCM
+// audio modulation sine wave.
+//
+// It creates a sine wave output of a specified frequecy
+// based on a sample rate, and per cycle sample count.
+//
+// SamplesPerCycle - Number of samples per cycle
+//
+// Frequency - Frequency in HZ for the generated sine wave
+//
+// PcmRate - PCM sample rate. Example: 48Khz, 8Khz.
+//           The is the output rate the routine generates into.
+//
+// Amplitude - Full scale positive amplitude.
+//             Example: 32767 for 16 bit signed PCM.
+//             Negative half is -Amplitude (-32767).
+//             An Amplitude of 1.0 (Unity) allows the table to be used
+//             to generate sine waves of different amplitudes with simple
+//             processing such as shift and add.
+//
+// Time - Time to generate the sine wave for in seconds.
+//
+void
+sdr_pcm_send_sine_wave_table_scaled(
+    int SamplesPerCycle,
+    int PcmRate,
+    double Frequency,
+    double Amplitude,
+    int    Time
+    )
+{
+    int missed = 0;
+    int timeout = 10000;
+    int16_t pcm_data_16;
+    uint32_t pcm_data;
+    int ret;
+    int sampleIndex;
+    int timeIndex;
+    int pcmIndex;
+    int sampleScale;
+    int scaleCounter;
+    uint16_t* table = NULL;
+    double samplesPerSecond;
+    double samplesPerTableIndex;
+
+    //
+    // The generated signal is a sign wave with SamplesPerCycle
+    // samples. The sign wave is pre-computed into a table for
+    // one complete cycle since the floating point math can take
+    // a large number of CPU cycles. The calculated table has
+    // SamplesPerCycle number of entries to represent one complete
+    // 360 degree (2*PI radians) cycle.
+    //
+    // The complete sine wave represented by all the table values
+    // is presented Frequency times per second. The total number of
+    // PCM sample changes output is this frequency multiplied by the
+    // samples in the table.
+    // 
+    // The PcmRate is typically higher than the samples per second
+    // of the generated sine wave, and a factor is calculated for how
+    // many PCM output cycles must tick before the next sample from
+    // the array is sent. The array itself wraps around as required
+    // restarting the sine wave at the end of each cycle.
+    //
+
+    // Samples per second for the signal
+    samplesPerSecond = Frequency * (double)SamplesPerCycle;
+
+    Serial.print("SamplesPerSecond: ");
+    Serial.println(samplesPerSecond);
+
+    // Number of PCM ouput cycles per signal sample
+    samplesPerTableIndex = (double)PcmRate / samplesPerSecond;
+
+    Serial.print("SamplesPerTableIndex: ");
+    Serial.println(samplesPerTableIndex);
+
+    //
+    // The value of sampleScale determines the sine wave output
+    // frequency and is the value that would be placed into the
+    // frequency register of a hardware RTL block.
+    //
+    // Updating this value during operation will change the
+    // output frequency using the configured ratio of per-calculated
+    // table samples and PcmRate.
+    //
+    // A pre-computed table of values for sampleScale that is updated
+    // by a modulation loop would allow for frequency modulation of
+    // the sine wave signal while avoiding floating point calculations
+    // in the inner loop.
+    //
+
+    // Integer truncate
+    sampleScale = (int)samplesPerTableIndex;
+
+    Serial.print("SamplesPerTableIndex: ");
+    Serial.println(samplesPerTableIndex);
+
+    //
+    // Generate table with one sine wave cycle with the number of specified
+    // samples at the specified peak amplitude.
+    //
+    // TODO: This takes the less compute approach of calculating a
+    // fixed magnitude into the table. For hardware implementation
+    // the magnitude needs to be calculated at PCM output time, or
+    // the table re-computed for signal magnitude changes, such
+    // as when producing amplitude modulation.
+    //
+    table = generate_sinewave_table((double)SamplesPerCycle, Amplitude);
+
+    Serial.print("Table Driven Send Sine Wave Start Frequency: ");
+    Serial.print(Frequency);
+    Serial.print(" SamplesPerCycle: ");
+    Serial.print(SamplesPerCycle);
+    Serial.print(" Amplitude: ");
+    Serial.println(Amplitude);
+    
+    Serial.print("sampleScale: ");
+    Serial.println(sampleScale);
+
+    scaleCounter = 0;
+    sampleIndex = 0;
+
+    // Seconds of signal generation
+    for (timeIndex = 0; timeIndex < Time; timeIndex++) {
+
+        // One second worth of PCM samples at PCM sample rate
+        for (pcmIndex = 0; pcmIndex < PcmRate; pcmIndex++) {
+
+            // Send next table sample at index
+            pcm_data_16 = table[sampleIndex];
+
+            // Send same signal to L+R channels
+            pcm_data = (pcm_data_16 << 16) | pcm_data_16;
+            ret = sdr_pcm_send_data(pcm_data, timeout);
+	    if ((ret == 0) && (sampleIndex != 0)) {
+		missed++;
+	    }
+	    else if (ret == timeout) {
+	       // Not accepting data, error
+	       Serial.println("Timeout sending Sine Wave");
+	       return;
+	    }
+
+            // One sine cycle at SamplesPerCycle rate
+            scaleCounter++;
+            if (scaleCounter >= sampleScale) {
+                scaleCounter = 0;
+
+                // Advance to the next table index for next send, modulo table samples.
+                sampleIndex++;
+                if (sampleIndex > SamplesPerCycle) {
+                    sampleIndex = 0;
+                }
+            }
+        }
+    }
+
+    Serial.print("Table Driven Send Sine Wave Done, missed PCM samples: ");
+    Serial.println(missed);
+
+    return;
+}
+
+//
+// This uses real time floating point calculatios to generate
+// the sine wave.
+//
+// As such it places the highest burden on the CPU for real time
+// synthesis of all the PCM samples of the waveform.
+//
+// Current test uses a 48Khz PCM sample rate for a mono signal.
+//
+// This is higher than ham radio communications need, but does not
+// include the I + Q synthesis required for ham communication.
+//
+void
+sdr_pcm_send_sine_wave_real_time()
 {
     double rad;
     double mag;
@@ -1030,13 +1481,10 @@ sdr_pcm_send_sine_wave()
     //
     rad_increment = (2.0 * 3.14) / (double)(sampleMax);
 
-    //Serial.print("rad_increment: ");
-    //Serial.println(rad_increment);
-
     for (loopIndex = 0; loopIndex < sendLoops; loopIndex++) {
 
         //
-        // This generate one complete sine wave cycle
+        // This generates one complete sine wave cycle
         //
     	rad = 0.0;
 	for (index = 0; index < sampleMax; index++) {
@@ -1068,21 +1516,6 @@ sdr_pcm_send_sine_wave()
     Serial.println(missed);
 
     return;
-
-  // send sine wave for number of seconds
-  // Add frequency parameter.
-
-  //
-  // Keep a counter for when the PCM_DATA register is empty after
-  // calculating next sine point.
-  //
-  //  - The register should still be full from the previous sample.
-  //
-  //    Not having to wait to send the next sample means a gap in the
-  //    PCM stream ocurred since synthesis took to long.
-  //
-
-
 }
 
 //
