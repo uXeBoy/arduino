@@ -43,20 +43,29 @@
 // SDR decodes from 0xFFFFFC00 - 0xFFFFFCFF which is a 256 byte
 // range providing 64 32 bit registers.
 //
+// Note: The AM and FM synthesizer blocks share control signals
+// for the frequency registers, PCM, and I+Q signals so only
+// one at a time should be enabled.
+//
+
+#define SDR_FREQUENCY                  0xFFFFFC00 // Register 0
 
 //
-// FMRDS is the first (4) 32 bit registers from 0xFFFFFC00 - 0xFFFFFC0F
+// FMRDS registers
 //
-#define FMRDS_FREQUENCY                0xFFFFFC00 // Register 0
+
 #define FMRDS_DATA                     0xFFFFFC04
 #define FMRDS_MESSAGE_LENGTH           0xFFFFFC08
 #define FMRDS_CONTROL                  0xFFFFFC0C
 
 // Control bit definitions
-#define FMRDS_CONTROL_CW_ENABLE        0x00000001
+#define FMRDS_CONTROL_FM_CW_ENABLE     0x00000001 // Enable FM carrier wave output
 #define FMRDS_CONTROL_MODULATOR_ENABLE 0x00000002
 #define FMRDS_CONTROL_RDS_DATA_ENABLE  0x00000004
 #define FMRDS_CONTROL_FM_PCM_ENABLE    0x00000008
+
+// AM generator definitions
+#define SDR_CONTROL_AM_CW_ENABLE       0x00000010 // Enable AM carrier wave output
 
 //
 // SDR registers
@@ -72,21 +81,67 @@
 #define FMRDS_CONTROL_PCM_IQ_FULL      0x00000002 // Bit 1 == 0 ready for next PCM IQ sample
 #define FMRDS_CONTROL_PCM_IQ_R_FULL    0x00000004 // Bit 2 == 0 ready for next PCM IQ right chan sample
 
+//
 // 16 bit PCM mono (left only) or stereo polar modulation
+//
+// TODO: Currently PCM_DATA L + R is used for I + Q on AM modulator
+// sharing common register and signals. May take away these two registers
+// for now.
+//
 #define SDR_PCM_DATA                   0xFFFFFC24 // L (15 downto 0) R (31 downto 16)
 
 // 16 bit PCM mono or stereo left channel I + Q modulation
-#define SDR_PCM_IQ                     0xFFFFFC28 // I (15 downto 0) Q (31 downto 16)
+#define SDR_PCM_IQ_RESERVED            0xFFFFFC28 // I (15 downto 0) Q (31 downto 16)
 
 // 16 bit PCM stereo right channel I + Q modulation
-#define SDR_PCM_IQ_R                   0xFFFFFC2C // I (15 downto 0) Q (31 downto 16)
+#define SDR_PCM_IQ_R_RESERVED          0xFFFFFC2C // I (15 downto 0) Q (31 downto 16)
 
-#define SDR_RESERVED_0                 0xFFFFFC30 // Register 12
-#define SDR_RESERVED_1                 0xFFFFFC34
-#define SDR_RESERVED_2                 0xFFFFFC38
+//
+// PCM modulation signal synthesizer registers.
+//
+// Depending on configuration the I + Q registers may be used
+// for a real time modulation signal.
+//
 
+// Control register
+#define SDR_PCM_SYNTH_CR                   0xFFFFFC30 // Register 12
+
+#define SDR_PCM_SYNTH_ENABLE               0x00000001
+#define SDR_PCM_SINE_ENABLE                0x00000002 // Generate sine tone
+
+//
+// The modulation (PCM) synthesizer has block RAM tables for sine/cosine
+// generation and FFT tables.
+//
+// The upper 16 bits is the address map for 64K 16 bit word
+// locations, with the data in the lower 16 bits.
+//
+// The split of the address space is defined by the particular
+// synthesizer module and mode enabled. For example multiple sine/cosine,
+// and FFT tables may be present within ranges of the 64K address space.
+//
+#define SDR_PCM_SYNTH_RAM                  0xFFFFFC34 // Address (31 downto 16) Data (16 downto 0)
+
+//
+// Frequency constant for generated signal.
+//
+// Value depends on the synthesizer design.
+//
+// Changing this value in real time will frequency modulate
+// the signal.
+//
+#define SDR_PCM_SYNTH_FREQ                 0xFFFFFC38
+
+//
+// Amplitude constant for generated signal.
+//
+// Value depends on the synthesizer design.
+//
+// Changing this value in real time will amplitude modulate
+// the signal.
+//
 // 0x3C => 0011 xxxx
-#define SDR_RESERVED_3                 0xFFFFFC3C // Register 15
+#define SDR_PCM_SYNTH_AMPLITUDE             0xFFFFFC3C // Register 15
 
 //
 // 16 registers currently implemented in sdr.vhd
@@ -255,7 +310,7 @@ class SDR {
 
     inline void Hz(uint32_t f)
     {
-      volatile uint32_t *fmrds_hz = (volatile uint32_t *)FMRDS_FREQUENCY;
+      volatile uint32_t *fmrds_hz = (volatile uint32_t *)SDR_FREQUENCY;
       *fmrds_hz = f;
     }
 

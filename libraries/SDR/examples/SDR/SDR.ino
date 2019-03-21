@@ -6,19 +6,22 @@
 //
 //  Add real time scaled integer signal magnitude calculations.
 //
-//  Test half shift and add.
-//    Take the value, divide by 2 by shifting right once.
-//    Add this value to the base.
-//    You have just multiplied by 1.5X.
-//    Each bit is a power of 2 multiply.
-//    1X, 2X, 4X, 8X, 16X, 32X, 64X, 128X, 256X (9 steps)
-//
-//    This can be doubled using the 1/2 shift and add technique.
-//
-//    A modulation table can have the constants for the technique.
-//
-//    Each entry in the table represents the value to add to the baseline
-//    shifted by 1 (multiplied by 2). Lower bits represent the fraction.
+//  TODO:
+//   #Bring in Arduino morse program.
+//   #Add serial console UI to allow commands, frequency change, morse/RDS messages.
+//   #Add R/W test code for new SDR registers.
+//   A 1Khz signal generation using delay(1) (actually 500hz with 1ms on/off)
+//    - better: added RTL logic in SDR SOC to pace a 48Khz PCM sample rate
+//   Add support for hardware PWM modulation
+//   Connect FM PCM modulation.
+//   Test sound sample.
+//   AM modulation experiments
+//   I+Q support
+//   SSB modulation experiments
+//   Port WSPR
+//   Other ham digital modes.
+//   Receiver support
+//   Integrate with SoftRock, etc.
 //
 // Delta Sigma Modulation
 // https://hackaday.io/project/162477-serial-port-sdr
@@ -62,22 +65,6 @@
   Software Defined Radio (SDR) created from FM RDS core.
 
   03/05/2019
-  TODO:
-   #Bring in Arduino morse program.
-   #Add serial console UI to allow commands, frequency change, morse/RDS messages.
-   #Add R/W test code for new SDR registers.
-   A 1Khz signal generation using delay(1) (actually 500hz with 1ms on/off)
-    - better: added RTL logic in SDR SOC to pace a 48Khz PCM sample rate
-   Add support for hardware PWM modulation
-   Connect FM PCM modulation.
-   Test sound sample.
-   AM modulation experiments
-   I+Q support
-   SSB modulation experiments
-   Port WSPR
-   Other ham digital modes.
-   Receiver support
-   Integrate with SoftRock, etc.
 */
 
 // Serial port baud rate for Serial Monitor, UI
@@ -118,7 +105,13 @@ LICENSE=GPL
 // Pin 13 has an LED connected on most Arduino boards.
 int led = 13;
 
+//
 // RDS is an operating mode of SDR for FM Radio Data System (RDS) display.
+//
+
+//
+// Menlo SoC SDR module.
+//
 SDR sdr = SDR();
 
 //
@@ -130,8 +123,10 @@ typedef struct _APPLICATION_VARS {
     int Ch;
 
     bool verbose;
-    bool carrier_on;
+    bool fm_carrier_on;
     bool fm_modulation_on;
+
+    bool am_carrier_on;
     bool am_modulation_on;
     bool morse_on;
 
@@ -147,7 +142,7 @@ APPLICATION_VARS G_app;
 void fm_rds_on()
 {
     uint32_t cr = 
-        FMRDS_CONTROL_CW_ENABLE |
+        FMRDS_CONTROL_FM_CW_ENABLE |
         FMRDS_CONTROL_MODULATOR_ENABLE |
         FMRDS_CONTROL_RDS_DATA_ENABLE;       
 
@@ -156,30 +151,51 @@ void fm_rds_on()
     digitalWrite(led, HIGH);
 }
 
-void carrier_on()
+void fm_carrier_on()
 {
-    uint32_t cr = FMRDS_CONTROL_CW_ENABLE;
+    uint32_t cr = FMRDS_CONTROL_FM_CW_ENABLE;
     sdr.WriteControlRegister(cr);
     digitalWrite(led, HIGH);
 }
 
-void carrier_off()
+void fm_carrier_off()
 {
     uint32_t cr = 0;
     sdr.WriteControlRegister(cr);
     digitalWrite(led, LOW);
 }
 
-void pure_carrier(int duration)
+void fm_pure_carrier(int duration)
 {
-    carrier_on();
+    fm_carrier_on();
     delay(duration);
-    carrier_off();
+    fm_carrier_off();
+}
+
+void am_carrier_on()
+{
+    uint32_t cr = SDR_CONTROL_AM_CW_ENABLE;
+    sdr.WriteControlRegister(cr);
+    digitalWrite(led, HIGH);
+}
+
+void am_carrier_off()
+{
+    uint32_t cr = 0;
+    sdr.WriteControlRegister(cr);
+    digitalWrite(led, LOW);
+}
+
+void am_pure_carrier(int duration)
+{
+    am_carrier_on();
+    delay(duration);
+    am_carrier_off();
 }
 
 void am_tone(int half_period, int count)
 {
-    uint32_t cr_on = FMRDS_CONTROL_CW_ENABLE;
+    uint32_t cr_on = SDR_CONTROL_AM_CW_ENABLE;
     uint32_t cr_off = 0;
 
     for (int i = 0; i < count; i++) {
@@ -208,9 +224,9 @@ public:
       }
 
       void virtual KeyDown(int interval) {
-          carrier_on();
+          am_carrier_on();
           delay(interval);
-          carrier_off();
+          am_carrier_off();
       }
 
 private:
@@ -406,7 +422,7 @@ void fm_rds_registers_display(PAPPLICATION_VARS p)
 {
   volatile uint32_t *r;
 
-  r = (volatile uint32_t*)FMRDS_FREQUENCY;
+  r = (volatile uint32_t*)SDR_FREQUENCY;
   Serial.print("Frequency: ");
   Serial.println(*r);
 
@@ -453,16 +469,16 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
 
         case 'c':
             // Carrier on
-            p->carrier_on = TRUE;
-            carrier_on();
+            p->fm_carrier_on = TRUE;
+            fm_carrier_on();
             Serial.println("CW carrier ON");
             break;
 
         case 'C':
             // Carrier off
-            carrier_off();
-            p->carrier_on = FALSE;
-            Serial.println("CW carrier FF");
+            fm_carrier_off();
+            p->fm_carrier_on = FALSE;
+            Serial.println("FM CW carrier OFF");
             break;
 
         case 'f':
@@ -1321,6 +1337,7 @@ sdr_pcm_send_sine_wave_table_scaled(
     uint16_t* table = NULL;
     double samplesPerSecond;
     double samplesPerTableIndex;
+    uint16_t range;
 
     //
     // The generated signal is a sign wave with SamplesPerCycle
@@ -1385,7 +1402,12 @@ sdr_pcm_send_sine_wave_table_scaled(
     // the table re-computed for signal magnitude changes, such
     // as when producing amplitude modulation.
     //
-    table = generate_sinewave_table((double)SamplesPerCycle, Amplitude);
+    // table = generate_sinewave_table((double)SamplesPerCycle, Amplitude);
+
+    // Scale by 4 bits (16)
+    table = generate_sinewave_table((double)SamplesPerCycle, 16);
+
+    range = (uint16_t)(Amplitude / 16.0);
 
     Serial.print("Table Driven Send Sine Wave Start Frequency: ");
     Serial.print(Frequency);
@@ -1397,6 +1419,9 @@ sdr_pcm_send_sine_wave_table_scaled(
     Serial.print("sampleScale: ");
     Serial.println(sampleScale);
 
+    Serial.print("range: ");
+    Serial.println(range);
+
     scaleCounter = 0;
     sampleIndex = 0;
 
@@ -1407,7 +1432,7 @@ sdr_pcm_send_sine_wave_table_scaled(
         for (pcmIndex = 0; pcmIndex < PcmRate; pcmIndex++) {
 
             // Send next table sample at index
-            pcm_data_16 = table[sampleIndex];
+            pcm_data_16 = (table[sampleIndex] * range);
 
             // Send same signal to L+R channels
             pcm_data = (pcm_data_16 << 16) | pcm_data_16;
