@@ -67,8 +67,17 @@
   03/05/2019
 */
 
+#define AM_SUPPORT 1
+#define SW_SUPPORT 1
+
 // Serial port baud rate for Serial Monitor, UI
 #define BAUD_RATE 115000
+
+//
+// AM frequency.
+//
+//#define AM_FREQUENCY 750000
+#define AM_FREQUENCY 7125000
 
 //
 // 7.125Mhz Legal morse code band for all US hams, with proper filters.
@@ -119,6 +128,9 @@ SDR sdr = SDR();
 //
 typedef struct _APPLICATION_VARS {
 
+    // SDR library object
+    SDR* sdr;
+
     /* Variable to store UART received character */
     int Ch;
 
@@ -138,6 +150,189 @@ typedef struct _APPLICATION_VARS {
 } *PAPPLICATION_VARS, APPLICATION_VARS;
 
 APPLICATION_VARS G_app;
+
+// Forward References
+void fm_rds_setup(PAPPLICATION_VARS p);
+void fm_rds_message(PAPPLICATION_VARS p, char*, char*);
+
+void fm_rds_loop(PAPPLICATION_VARS p);
+
+void sdr_registers_test();
+void memory_test();
+
+void generate_test_sinewave();
+void sdr_pcm_send_sine_wave_real_time();
+void sdr_pcm_send_sine_wave_table();
+
+void
+sdr_pcm_send_sine_wave_table_scaled(
+    int SamplesPerCycle,
+    int PcmRate,
+    double Frequency,
+    double Amplitude,
+    int    Time
+    );
+
+#if AM_SUPPORT
+void am_carrier_on(PAPPLICATION_VARS p);
+void am_carrier_off(PAPPLICATION_VARS p);
+#endif
+
+#if SW_SUPPORT
+void sw_am_test(PAPPLICATION_VARS p);
+void sw_cw_setup(PAPPLICATION_VARS p);
+void sw_cw_test(PAPPLICATION_VARS p);
+#endif
+
+void
+ProcessUserInput(
+    PAPPLICATION_VARS p
+    );
+
+class CwKeyer : public MorseKeyer {
+
+public:
+      CwKeyer() {
+      }
+
+      void Initialize(PAPPLICATION_VARS app) {
+          m_app = app;
+      }
+
+      void virtual KeyDown(int interval) {
+#if AM_SUPPORT
+          am_carrier_on(m_app);
+#endif
+          delay(interval);
+#if AM_SUPPORT
+          am_carrier_off(m_app);
+#endif
+      }
+
+private:
+      PAPPLICATION_VARS m_app;
+};
+
+CwKeyer G_Keyer;
+
+MorseSync G_Morse;
+
+#if AM_SUPPORT
+void am_setup(PAPPLICATION_VARS p, uint32_t Frequency)
+{
+    sdr.Hz(Frequency); // Hz carrier wave frequency
+}
+
+void
+am_carrier_on(
+    PAPPLICATION_VARS p
+    )
+{
+    uint32_t cr = SDR_CONTROL_AM_CW_ENABLE;
+    p->am_carrier_on = TRUE;
+    sdr.WriteControlRegister(cr);
+    digitalWrite(led, HIGH);
+}
+
+void
+am_carrier_off(
+    PAPPLICATION_VARS p
+    )
+{
+    uint32_t cr = 0;
+    sdr.WriteControlRegister(cr);
+    p->am_carrier_on = FALSE;
+    digitalWrite(led, LOW);
+}
+
+void
+am_pure_carrier(
+    PAPPLICATION_VARS p,
+    int duration
+    )
+{
+    am_carrier_on(p);
+    delay(duration);
+    am_carrier_off(p);
+}
+
+void
+am_tone(
+    PAPPLICATION_VARS p,
+    int half_period,
+    int count
+    )
+{
+    uint32_t cr_on = SDR_CONTROL_AM_CW_ENABLE;
+    uint32_t cr_off = 0;
+
+    for (int i = 0; i < count; i++) {
+
+        sdr.WriteControlRegister(cr_on);
+        //digitalWrite(led, HIGH);
+
+        delay(half_period);
+
+        sdr.WriteControlRegister(cr_off);
+
+        delay(half_period);
+
+        //digitalWrite(led, LOW);
+    }
+}
+#endif // AM_SUPPORT
+
+#if SW_SUPPORT
+void
+sw_cw_setup(
+    PAPPLICATION_VARS p,
+    uint32_t Frequency
+    )
+{
+    uint32_t cr = 0;
+
+    sdr.WriteControlRegister(cr);
+
+    // Set carrier frequency in Hertz
+    sdr.Hz(Frequency);
+}
+
+void
+sw_cw_test(PAPPLICATION_VARS p)
+{
+  int loopCount;
+  int maxLoops = 10;
+
+  if (p->verbose) Serial.println("Morse Test...");
+
+  for (loopCount = 0; loopCount < maxLoops; loopCount++) {
+
+      if (p->verbose) Serial.print("loop: ");
+      if (p->verbose) Serial.println(loopCount);
+
+      G_Morse.SendString("xxx");
+      G_Morse.SendString("test");
+      G_Morse.SendString("xxx");
+  }
+
+  if (p->verbose) Serial.println(" Done.");
+}
+
+void
+sw_am_test(PAPPLICATION_VARS p)
+{
+  if (p->verbose) Serial.print("AM Tone Test...");
+
+  // AM modulated tone, 500Hz, count for 10 seconds
+  am_tone(p, 1, 10000);
+
+  if (p->verbose) Serial.println(" Done.");
+}
+#endif
+
+//
+// FM RDS Setup
+//
 
 void fm_rds_on()
 {
@@ -172,104 +367,11 @@ void fm_pure_carrier(int duration)
     fm_carrier_off();
 }
 
-void am_carrier_on()
-{
-    uint32_t cr = SDR_CONTROL_AM_CW_ENABLE;
-    sdr.WriteControlRegister(cr);
-    digitalWrite(led, HIGH);
-}
-
-void am_carrier_off()
-{
-    uint32_t cr = 0;
-    sdr.WriteControlRegister(cr);
-    digitalWrite(led, LOW);
-}
-
-void am_pure_carrier(int duration)
-{
-    am_carrier_on();
-    delay(duration);
-    am_carrier_off();
-}
-
-void am_tone(int half_period, int count)
-{
-    uint32_t cr_on = SDR_CONTROL_AM_CW_ENABLE;
-    uint32_t cr_off = 0;
-
-    for (int i = 0; i < count; i++) {
-
-        sdr.WriteControlRegister(cr_on);
-        //digitalWrite(led, HIGH);
-
-        delay(half_period);
-
-        sdr.WriteControlRegister(cr_off);
-
-        delay(half_period);
-
-        //digitalWrite(led, LOW);
-    }
-}
-
-class CwKeyer : public MorseKeyer {
-
-public:
-      CwKeyer() {
-      }
-
-      void Initialize(SDR* sdr) {
-          m_sdr = sdr;
-      }
-
-      void virtual KeyDown(int interval) {
-          am_carrier_on();
-          delay(interval);
-          am_carrier_off();
-      }
-
-private:
-      SDR* m_sdr;
-};
-
-CwKeyer G_Keyer;
-
-MorseSync G_Morse;
-
-// Forward References
-void fm_rds_setup(PAPPLICATION_VARS p);
-void fm_rds_message(PAPPLICATION_VARS p, char*, char*);
-
-void fm_rds_loop(PAPPLICATION_VARS p);
-
-void sw_cw_setup(PAPPLICATION_VARS p);
-void sw_cw_test(PAPPLICATION_VARS p);
-
-void sw_am_test(PAPPLICATION_VARS p);
-
-void sdr_registers_test();
-void memory_test();
-
-void generate_test_sinewave();
-void sdr_pcm_send_sine_wave_real_time();
-void sdr_pcm_send_sine_wave_table();
-
-void
-sdr_pcm_send_sine_wave_table_scaled(
-    int SamplesPerCycle,
-    int PcmRate,
-    double Frequency,
-    double Amplitude,
-    int    Time
-    );
-
-
-void ProcessUserInput(PAPPLICATION_VARS p);
-
 void setup()
 {
     PAPPLICATION_VARS p = &G_app;
+
+    p->sdr = &sdr;
 
     p->verbose = TRUE;
 
@@ -279,54 +381,13 @@ void setup()
     pinMode(led, OUTPUT);     
 
     // Initialize morse
+    G_Keyer.Initialize(p);
     G_Morse.Initialize(&G_Keyer);
-
-    // Select which setup for which radio operating mode to use
-    // Currently done by UI
-
-    // FM Radio Data System (RDS) setup.
-    //fm_rds_setup(p);
-
-    // Shortwave CW (Continuous Wave or morse code) setup.
-    //sw_cw_setup(p);
 }
 
 void loop()
 {
    ProcessUserInput(&G_app);
-}
-
-void sw_cw_setup(PAPPLICATION_VARS p)
-{
-  uint32_t frequency;
-
-  frequency = SHORTWAVE_CW_FREQUENCY;
-
-  // Set carrier frequency in Hertz
-  sdr.Hz(frequency);
-
-  //carrier_on();
-}
-
-void
-sw_cw_test(PAPPLICATION_VARS p)
-{
-  if (p->verbose) Serial.print("Morse Test...");
-  G_Morse.SendString("xxx");
-  G_Morse.SendString("test");
-  G_Morse.SendString("xxx");
-  if (p->verbose) Serial.println(" Done.");
-}
-
-void
-sw_am_test(PAPPLICATION_VARS p)
-{
-  if (p->verbose) Serial.print("AM Tone Test...");
-
-  // AM modulated tone, 500Hz, count for 10 seconds
-  am_tone(1, 10000);
-
-  if (p->verbose) Serial.println(" Done.");
 }
 
 //
@@ -460,15 +521,23 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
     {
         case 'a':
             // AM Modulation on
-            sw_am_test(&G_app);
+#if AM_SUPPORT
+            am_setup(p, AM_FREQUENCY);
+#endif
+#if SW_SUPPORT
+            sw_am_test(p);
+#endif
             break;
 
         case 'A':
+#if AM_SUPPORT
             // AM Modulation off
+            am_carrier_off(p);
+#endif
             break;
 
         case 'c':
-            // Carrier on
+            // FM Carrier on
             p->fm_carrier_on = TRUE;
             fm_carrier_on();
             Serial.println("CW carrier ON");
@@ -490,9 +559,11 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             break;
 
         case 'm':
+#if SW_SUPPORT
             // Morse Code  on
-            sw_cw_setup(p);
+            sw_cw_setup(p, SHORTWAVE_CW_FREQUENCY);
             sw_cw_test(&G_app);
+#endif
             break;
 
         case 'M':
@@ -1603,3 +1674,4 @@ uint16_t Sinewave[] = {
     57056,
     61259  // 48 entries
     };
+

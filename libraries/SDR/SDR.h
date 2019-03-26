@@ -41,31 +41,141 @@
 
 //
 // SDR decodes from 0xFFFFFC00 - 0xFFFFFCFF which is a 256 byte
-// range providing 64 32 bit registers.
+// range providing 64 32 bit registers that provide the
+// primary interface to a Software Defined Radio subsystem
+// consisting of multiple internal processing blocks.
 //
 // Note: The AM and FM synthesizer blocks share control signals
 // for the frequency registers, PCM, and I+Q signals so only
 // one at a time should be enabled.
 //
+// They have separate antennas to allow different external
+// filters, and to minimize the logic paths for the radio
+// frequency signal output from the FPGA.
+//
+// Synthesizer, filter, and modulator blocks will also be
+// available as the project progresses to support using
+// the SoC SDR block for radio communications.
+//
+// WARNING: Communication in the below bands must be according
+// to your license and regulations of the country you use it.
+// For example the long wave bands are still used for aircraft
+// navigation/landing so operations there must be within the
+// bands and power limits specified by your country and amateur
+// radio license. You are also responsible for applying the proper
+// external analog filtering to the direct digital synthesis
+// signal which by its nature is very noisy and will generate
+// harmful interference if not properly filtered.
+//
+// SDR Targets:
+//
+// 1) Amateur (HAM) radio communications on the high frequency (HF)
+//    bands, otherwise known as "shortwave bands". Support SSB, CW,
+//    AM, and narrow band FM (28Mhz and above).
+//
+// 2) Support ham radio digital modes on the shortwave bands, using
+//    the SSB/CW modulation baselines.
+//
+// 3) Support WSPR automated ham radio beacon communications on the
+//    long wave (488Khz) and short wave (HF) bands.
+//
+// 4) Support AM modulated CW tone in the LW amateur radio bands
+//    similar to a long wave navigation beacon.
+//
+// 5) AM Broad Cast Band (BCB) transmission for local entertainment
+//    purposes. (530Khz - 1.6Mhz)
+//
+// 6) FM broadcast band transmission with audio and Radio Data System
+//    (RDS) digital information transmissions for enterainment purposes.
+//
+// 7) Support for higher frequency amateur radio bands (above 50Mhz)
+//    depending on the capabilities of the FPGA.
+//
+// Goal is to start with transmit first, and eventually support receive
+// with an outboard RF A/D converter with the receive front end
+// filters, RF/LNA (Low Noise Amplifier), etc. This A/D converter
+// could be narrow band using the audio spectrum similar to many PC
+// based SDR's, or wide band depending on the bandwidth available
+// in the FPGa and front end A/D. For example the LimeSDR LMS7002M
+// provides programmable up to 62.5Mhz of bandwidth and interfaces
+// to an Altera Cyclone IV FPGA.
+//
+// One of the main goals of this F32C based SDR SoC is to operate
+// 100% standalone on the FPGA without any external ARM cores
+// or PC. It can feed a PC, tablet, cellphone, or RaspberryPi as
+// a "user interface", and to provide for less common SDR radio
+// modes. But for common baseline commuications such as SSB, CW, AM,
+// FM, and popular ham narrow band digitial modes its fully self
+// contained with the soft core on the FPGA running the control
+// loop, and the synthesis/filtering in FPGA RTL hardware blocks.
+//
+// The design can still take advantage of external bluetooth, WiFi,
+// RasperryPi Zero/Compute module, or small ARM based microcontrollers
+// for the "UI" aspects such as running a front panel, keyboard, mouse,
+// etc. But all of the radio outside of the required analog filters
+// and amplifiers are contained within the single FPGA.
+//
+// One main intention is to be able to "port" the F32C subsystem
+// configuration with the SoC SDR to a software defined radio
+// board such as the LimeSDR.
+//
+// Note at the current time the FPGA on the LimeSDR is rather
+// small. Hopefully they will offer a larger FPGA upgrade option.
+//
+// If not, separating the radio into (2) FPGA's is acceptable, but this
+// SoC SDR core will optimize for runnig the F32C CPU and standalone
+// SDR radio on one FPGA, and the other FPGA will handle any Digital
+// Down Conversion (DDC) and controls of the radio front end, and interface
+// to the primary SDR SoC as a programmable 16 bit PCM I+Q stream. This
+// model allows leveraging other SDR front ends such as SoftRock, etc.
+// which mostly operate with a PC, but in this case would be standalone.
+//
+
+// SoC SDR block model:
+//
+//  RF output is from parallel AM and FM Direct Digital Synthesis modules.
+//
+//  Single Side Band (SSB) may be a separate module, or option on AM.
+//
+//  They are fed with a PCM modulation input which can come from multiple
+//  sources.
+//
+//  PCM sources are:
+//
+//    1) CPU from memory mapped registers. This allows CPU processing
+//       and generation of signals.
+//
+//    2) Sine wave synthesis modules. Useful for testing, calibration,
+//       and provide signal sources for other modulation modes such as
+//       a base tone for an AM based CW tone for a longwave beacon,
+//       or a carrier wave for SSB synthesis.
+//
+//    3) Audio A/D converter on I2C or SPI bus for external sources
+//       such as a communications microphone, music for broadcast, etc.
+//
+//    4) Filter/Modulator blocks. Filter blocks provide signal procesing and
+//       DSP synthesis for generation of different modes such as AM, SSB,
+//       tone modulated CW, etc.
+//
 
 #define SDR_FREQUENCY                  0xFFFFFC00 // Register 0
 
 //
-// FMRDS registers
+// FM RDS registers
 //
 
-#define FMRDS_DATA                     0xFFFFFC04
-#define FMRDS_MESSAGE_LENGTH           0xFFFFFC08
-#define FMRDS_CONTROL                  0xFFFFFC0C
+#define FMRDS_DATA                     0xFFFFFC04 // Register 1
+#define FMRDS_MESSAGE_LENGTH           0xFFFFFC08 // Register 2
+#define FMRDS_CONTROL                  0xFFFFFC0C // Register 3
 
 // Control bit definitions
 #define FMRDS_CONTROL_FM_CW_ENABLE     0x00000001 // Enable FM carrier wave output
-#define FMRDS_CONTROL_MODULATOR_ENABLE 0x00000002
-#define FMRDS_CONTROL_RDS_DATA_ENABLE  0x00000004
-#define FMRDS_CONTROL_FM_PCM_ENABLE    0x00000008
+#define FMRDS_CONTROL_MODULATOR_ENABLE 0x00000002 // FM PCM input enable
+#define FMRDS_CONTROL_RDS_DATA_ENABLE  0x00000004 // FM Radio Data System Enable
 
 // AM generator definitions
-#define SDR_CONTROL_AM_CW_ENABLE       0x00000010 // Enable AM carrier wave output
+#define SDR_CONTROL_AM_CW_ENABLE       0x00000008 // Enable AM carrier wave output
+#define SDR_CONTROL_AM_PCM_ENABLE      0x00000010 // AM PCM input/modulator enable
 
 //
 // SDR registers
@@ -75,36 +185,33 @@
 #define SDR_CONTROL2                   0xFFFFFC18
 #define SDR_CONTROL3                   0xFFFFFC1C
 
-#define SDR_PCM_CS                     0xFFFFFC20 // Register 8 PCM source control/status register
+//
+// 16 bit PCM mono (left only) or stereo polar modulation
+//
+#define SDR_PCM_DATA                   0xFFFFFC20 // L (15 downto 0) R (31 downto 16)
+
+// 16 bit PCM mono or stereo left channel I + Q modulation
+#define SDR_PCM_IQ_RESERVED            0xFFFFFC24 // I (15 downto 0) Q (31 downto 16)
+
+// 16 bit PCM stereo right channel I + Q modulation
+#define SDR_PCM_IQ_R_RESERVED          0xFFFFFC28 // I (15 downto 0) Q (31 downto 16)
+
+#define SDR_PCM_CS                     0xFFFFFC2C // Register 11 PCM source control/status register
 
 #define FMRDS_CONTROL_PCM_FULL         0x00000001 // Bit 0 == 0 ready for next PCM polar sample
 #define FMRDS_CONTROL_PCM_IQ_FULL      0x00000002 // Bit 1 == 0 ready for next PCM IQ sample
 #define FMRDS_CONTROL_PCM_IQ_R_FULL    0x00000004 // Bit 2 == 0 ready for next PCM IQ right chan sample
 
-//
-// 16 bit PCM mono (left only) or stereo polar modulation
-//
-// TODO: Currently PCM_DATA L + R is used for I + Q on AM modulator
-// sharing common register and signals. May take away these two registers
-// for now.
-//
-#define SDR_PCM_DATA                   0xFFFFFC24 // L (15 downto 0) R (31 downto 16)
-
-// 16 bit PCM mono or stereo left channel I + Q modulation
-#define SDR_PCM_IQ_RESERVED            0xFFFFFC28 // I (15 downto 0) Q (31 downto 16)
-
-// 16 bit PCM stereo right channel I + Q modulation
-#define SDR_PCM_IQ_R_RESERVED          0xFFFFFC2C // I (15 downto 0) Q (31 downto 16)
 
 //
-// PCM modulation signal synthesizer registers.
+// PCM signal synthesizer registers.
 //
 // Depending on configuration the I + Q registers may be used
 // for a real time modulation signal.
 //
 
-// Control register
-#define SDR_PCM_SYNTH_CR                   0xFFFFFC30 // Register 12
+// Control/Status register
+#define SDR_PCM_SYNTH_CS                   0xFFFFFC30 // Register 12
 
 #define SDR_PCM_SYNTH_ENABLE               0x00000001
 #define SDR_PCM_SINE_ENABLE                0x00000002 // Generate sine tone
