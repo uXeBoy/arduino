@@ -126,6 +126,8 @@ SDR sdr = SDR();
 //
 // Keep application variables in one struct.
 //
+#define MAX_INPUT_LINE 80
+
 typedef struct _APPLICATION_VARS {
 
     // SDR library object
@@ -133,6 +135,10 @@ typedef struct _APPLICATION_VARS {
 
     /* Variable to store UART received character */
     int Ch;
+
+    bool stringInput;
+    int  inputBufferIndex;
+    char inputBuffer[MAX_INPUT_LINE+1];
 
     bool verbose;
     bool fm_carrier_on;
@@ -147,6 +153,11 @@ typedef struct _APPLICATION_VARS {
     char ps[9];       // Program Service
     char rt[65];      // Radio Text
 
+    // Sine Synthesizer
+    bool     synth_on;
+    uint32_t synth_frequency;
+    uint32_t synth_amplitude;
+
 } *PAPPLICATION_VARS, APPLICATION_VARS;
 
 APPLICATION_VARS G_app;
@@ -160,6 +171,14 @@ void fm_rds_loop(PAPPLICATION_VARS p);
 void sdr_registers_test();
 void memory_test();
 
+uint16_t*
+generate_sinewave_table(
+    double Samples,
+    double Amplitude
+    );
+
+void free_sinewave_table(uint16_t* table);
+
 void generate_test_sinewave();
 void sdr_pcm_send_sine_wave_real_time();
 void sdr_pcm_send_sine_wave_table();
@@ -172,6 +191,8 @@ sdr_pcm_send_sine_wave_table_scaled(
     double Amplitude,
     int    Time
     );
+
+uint32_t synth_table_test(PAPPLICATION_VARS p);
 
 #if AM_SUPPORT
 void am_carrier_on(PAPPLICATION_VARS p);
@@ -503,17 +524,108 @@ void fm_rds_registers_display(PAPPLICATION_VARS p)
 //
 // UserInterface
 // UI
+//
+
+void
+ResetInputBuffer(PAPPLICATION_VARS p)
+{
+    p->stringInput = false;
+    p->inputBufferIndex = 0;
+    p->inputBuffer[p->inputBufferIndex] = 0;
+}
+
+//
+// Processes input buffer state machine.
+//
+// 0 - No input string. Error or just <CR>
+//
+// 1 - n - Done with input. Count of characters input.
+//
+// -1 - Still processing.
+//
+int
+ProcessInputBuffer(PAPPLICATION_VARS p, int c)
+{
+    //
+    // This handles various states for inputing numbers, lines, etc.
+    //
+    if (p->stringInput) {
+
+        // CR or line feed terminates input line
+        if ((c == 0xa) || (c == 0xd)) {
+            p->stringInput = false;
+
+            // return current count, could be zero for just <CR> entered.
+            return p->inputBufferIndex;
+        }
+
+        if (p->inputBufferIndex >= MAX_INPUT_LINE-1) {
+            // overflow
+            Serial.println("input buffer overflow");
+
+            // Don't return incomplete commands, input data
+            ResetInputBuffer(p);
+
+            // No data return.
+            return 0;
+        }
+
+        p->inputBuffer[p->inputBufferIndex] = c;
+        p->inputBufferIndex++;
+
+        // Keep string null terminated
+        p->inputBuffer[p->inputBufferIndex] = 0;
+    }
+
+    // still inputing
+    return -1;
+}
+
+//
+// Return:
+//
+// 1 - got an input character. Hint to keep processing for more.
+//
+// 0 - No more input characters.
+//
 int
 ProcessUserInputWorker(PAPPLICATION_VARS p)
 {
-    static bool fm_rds_init = FALSE;
+    int ret;
 
     if (Serial.available()) {
         p->Ch = Serial.read();
     }
     else {
         p->Ch = -1;
+        // No more input characters
         return 0;
+    }
+
+    if (p->stringInput) {
+        ret = ProcessInputBuffer(p, p->Ch);
+        if (ret == 0) {
+            // nothing entered or overflow.
+
+            // Cancel any states that set p->stringInput
+
+            ResetInputBuffer(p);
+            return 1;
+        }
+        else if (ret == (-1)) {
+            // still processing input
+            return 1;
+        }
+        else  {
+            //
+            // input done. ret is the count of characters input.
+            // Handle any states that set p->stringInput
+            //
+            ResetInputBuffer(p);
+            return 1;
+        }
+
+        return 1;
     }
 
     /* Set flags based on UART command */
@@ -536,6 +648,9 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
 #endif
             break;
 
+        case 'b':
+            break;
+
         case 'c':
             // FM Carrier on
             p->fm_carrier_on = TRUE;
@@ -550,12 +665,35 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             Serial.println("FM CW carrier OFF");
             break;
 
+        case 'd':
+            break;
+
+        case 'e':
+            break;
+
         case 'f':
             // Display frequency
             break;
 
         case 'F':
             // Set frequency
+            break;
+
+        case 'g':
+            break;
+
+        // 'h' is for help, handled below
+
+        case 'i':
+            break;
+
+        case 'j':
+            break;
+
+        case 'k':
+            break;
+
+        case 'l':
             break;
 
         case 'm':
@@ -568,6 +706,12 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
 
         case 'M':
             // Morse Code off
+            break;
+
+        case 'o':
+            break;
+
+        case 'p':
             break;
 
         case 'q':
@@ -591,10 +735,7 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
 
         case 'r':
             // RDS on
-            if (fm_rds_init == FALSE) {
-                fm_rds_setup(p);
-                fm_rds_init = TRUE;
-            }
+            fm_rds_setup(p);
 
             fm_rds_registers_display(p);
             break;
@@ -616,6 +757,13 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             generate_test_sinewave();
             break;
 
+        case 'T':
+            synth_table_test(p);
+            break;
+
+        case 'u':
+            break;
+
         case 'v':
             // Verbose on
             p->verbose = TRUE;
@@ -624,6 +772,15 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
         case 'V':
             // Verbose off
             p->verbose = TRUE;
+            break;
+
+        case 'w':
+            break;
+
+        case 'x':
+            break;
+
+        case 'y':
             break;
 
         case 'z':
@@ -639,6 +796,36 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             sdr_registers_test();
             Serial.println(" Done.");
             break;
+
+        case '0':
+        break;
+
+        case '1':
+        break;
+
+        case '2':
+        break;
+
+        case '3':
+        break;
+
+        case '4':
+        break;
+
+        case '5':
+        break;
+
+        case '6':
+        break;
+
+        case '7':
+        break;
+
+        case '8':
+        break;
+
+        case '9':
+        break;
 
 	case 0:
 	case -1:
@@ -673,6 +860,7 @@ ProcessUserInputWorker(PAPPLICATION_VARS p)
             Serial.println("r - FM RDS on, R - FM RDS off");
             Serial.println("s - FM modulation on, S - FM modulation off");
             Serial.println("t - Show test sine wave calculations");
+            Serial.println("T - Test hardware sine wave table");
             Serial.println("v - Verbose on, V - Verbose off");
             Serial.println("z - Memory Test");
             Serial.println("Z - Registers test");
@@ -700,6 +888,204 @@ ProcessUserInput(PAPPLICATION_VARS p)
         }
     }
 }
+
+//
+// ============= SYNTH SoC Module =============
+//
+
+uint32_t
+synth_table_read_control()
+{
+  volatile uint32_t *r;
+  uint32_t tmp;
+
+  r = (uint32_t*)SDR_PCM_SYNTH_CS;
+
+  tmp = *r;
+
+  return tmp;
+}
+
+void
+synth_table_write_control(uint32_t value)
+{
+  volatile uint32_t *r;
+
+  r = (uint32_t*)SDR_PCM_SYNTH_CS;
+
+  *r = value;
+
+  return;
+}
+
+void
+synth_table_write_frequency(uint32_t value)
+{
+  volatile uint32_t *r;
+
+  r = (uint32_t*)SDR_PCM_SYNTH_FREQ;
+
+  *r = value;
+
+  return;
+}
+
+void
+synth_table_write_amplitude(uint32_t value)
+{
+  volatile uint32_t *r;
+
+  r = (uint32_t*)SDR_PCM_SYNTH_AMPLITUDE;
+
+  *r = value;
+
+  return;
+}
+
+void
+synth_table_write_freq_amplitude(uint32_t frequency, uint32_t amplitude)
+{
+  volatile uint32_t *r;
+
+  r = (uint32_t*)SDR_PCM_SYNTH_FREQ;
+  *r = frequency;
+
+  r = (uint32_t*)SDR_PCM_SYNTH_AMPLITUDE;
+  *r = amplitude;
+
+  return;
+}
+
+//
+// Write entry to the synth table
+//
+void synth_table_write_entry(uint16_t index, uint16_t value)
+{
+  volatile uint32_t *r;
+  uint32_t tmp;
+
+  r = (uint32_t*)SDR_PCM_SYNTH_RAM;
+
+  // Address (31 downto 16) Data (16 downto 0)
+  tmp = value;;
+  tmp = tmp | (index << 16);
+  
+  *r = tmp;
+}
+
+//
+// Read the contents of the synthtable.
+//
+// Note: SDR_PCM_SYNTH_CS SDR_PCM_WRITE_PROTECT must be set to read
+// existing contents without overwriting since the register
+// is shared with address and data.
+//
+uint16_t
+synth_table_read_entry(uint16_t index)
+{
+  volatile uint32_t *r;
+  uint32_t tmp;
+
+  r = (uint32_t*)SDR_PCM_SYNTH_RAM;
+
+  // Address (31 downto 16) Data (16 downto 0)
+  tmp = 0;
+  tmp = tmp | (index << 16);
+  
+  // Write the address
+  *r = tmp;
+
+  // Now read it back with the data
+  tmp = *r;
+
+  return (uint16_t)tmp & 0x0000FFFF;
+}
+
+//
+// Load the synth table
+//
+void
+synth_load_table(
+    uint16_t* table,
+    uint16_t  tableSize
+    )
+{
+    uint16_t index;
+
+    for(index = 0; index < tableSize; index++) {
+        synth_table_write_entry(index, table[index]);
+    }
+
+    return;
+}
+
+//
+// Validate the contents of the synth table.
+//
+// Sets write protect.
+//
+int
+synth_validate_table(
+    uint16_t* table,
+    uint16_t  tableSize
+    )
+{
+    uint16_t index;
+    uint16_t tmp;
+
+    // Set write protect
+    synth_table_write_control(SDR_PCM_WRITE_PROTECT);
+
+    for(index = 0; index < tableSize; index++) {
+        tmp = synth_table_read_entry(index);
+
+        if (tmp != table[index]) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+//
+// Test the synthesizer table.
+//
+// test_synth
+// synth_test
+//
+uint32_t
+synth_table_test(PAPPLICATION_VARS p)
+{
+    uint16_t* table = NULL;
+    uint16_t tableSize;
+    int ret;
+
+    double samples = 48.0;
+    double amplitude = 32767.0;
+
+    table = generate_sinewave_table(samples, amplitude);
+
+    tableSize = (uint16_t)samples;
+
+    synth_load_table(table, tableSize);
+
+    ret = synth_validate_table(table, tableSize);
+    if (ret != (-1)) {
+        Serial.print("Synth Table validation failure index: ");
+        Serial.println(ret);
+    }
+    else {
+        Serial.println("Synth Table validation Success!");
+    }
+
+    free_sinewave_table(table);
+
+    return 0;
+}
+
+//
+// ============= SDR Registers Tests =============
+//
 
 //
 // Look for aliases for the registers.
@@ -1128,6 +1514,9 @@ memory_test()
 //                0          90        180       270         360
 //                0 => +MaxAmplitude => 0 => -MaxAmplitude => 0
 //
+// Returns:
+//  Pointer to: uint16_t[Samples]
+//
 uint16_t*
 generate_sinewave_table(
     double Samples,
@@ -1173,6 +1562,14 @@ generate_sinewave_table(
     }
 
     return array;
+}
+
+void
+free_sinewave_table(uint16_t* table)
+{
+    if (table != NULL) {
+        free((void*)table);
+    }
 }
 
 //
@@ -1352,6 +1749,7 @@ sdr_pcm_send_sine_wave_table()
 	    else if (ret == timeout) {
 	       // Not accepting data, error
 	       Serial.println("Timeout sending Sine Wave");
+               free_sinewave_table(table);
 	       return;
 	    }
 	}
@@ -1359,6 +1757,8 @@ sdr_pcm_send_sine_wave_table()
 
     Serial.print("Table Driven Send Sine Wave Done, missed PCM samples: ");
     Serial.println(missed);
+
+    free_sinewave_table(table);
 
     return;
 }
@@ -1514,6 +1914,7 @@ sdr_pcm_send_sine_wave_table_scaled(
 	    else if (ret == timeout) {
 	       // Not accepting data, error
 	       Serial.println("Timeout sending Sine Wave");
+               free_sinewave_table(table);
 	       return;
 	    }
 
@@ -1533,6 +1934,8 @@ sdr_pcm_send_sine_wave_table_scaled(
 
     Serial.print("Table Driven Send Sine Wave Done, missed PCM samples: ");
     Serial.println(missed);
+
+    free_sinewave_table(table);
 
     return;
 }

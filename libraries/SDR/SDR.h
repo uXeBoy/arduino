@@ -215,6 +215,7 @@
 
 #define SDR_PCM_SYNTH_ENABLE               0x00000001
 #define SDR_PCM_SINE_ENABLE                0x00000002 // Generate sine tone
+#define SDR_PCM_WRITE_PROTECT              0x00000004
 
 //
 // The modulation (PCM) synthesizer has block RAM tables for sine/cosine
@@ -228,6 +229,7 @@
 // and FFT tables may be present within ranges of the 64K address space.
 //
 #define SDR_PCM_SYNTH_RAM                  0xFFFFFC34 // Address (31 downto 16) Data (16 downto 0)
+                                                      // Register 13
 
 //
 // Frequency constant for generated signal.
@@ -237,7 +239,7 @@
 // Changing this value in real time will frequency modulate
 // the signal.
 //
-#define SDR_PCM_SYNTH_FREQ                 0xFFFFFC38
+#define SDR_PCM_SYNTH_FREQ                 0xFFFFFC38 // Register 14
 
 //
 // Amplitude constant for generated signal.
