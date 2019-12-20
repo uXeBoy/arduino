@@ -13,8 +13,8 @@ f32c.mips.compiler.c.flags=-march=f32c -c -EL -G 32768 -Os -fpeel-loops -ffreest
 f32c.mips.compiler.cpp.flags=-march=f32c -c -EL -G 32768 -Os -fpeel-loops -ffreestanding -ffunction-sections -fdata-sections -fpermissive -Wall -nostdinc "-I{build.system.path}/include" -include sys/param.h -fno-rtti  -fno-exceptions
 f32c.mips.compiler.ld.flags=-N -EL -gc-sections "--library-path={build.system.path}/mips/lib"
 
-f32c.riscv.compiler.c.flags=-c -Os -march=rv32i -mabi=ilp32 -fpeel-loops -ffreestanding -ffunction-sections -fdata-sections -Wall -nostdinc "-I{build.system.path}/include" -include sys/param.h -include sys/stdint.h
-f32c.riscv.compiler.cpp.flags=-c -Os -march=rv32i -mabi=ilp32 -fpeel-loops -ffreestanding -ffunction-sections -fdata-sections -fpermissive -Wall -nostdinc "-I{build.system.path}/include" -include sys/param.h -fno-rtti  -fno-exceptions -include sys/stdint.h
+f32c.riscv.compiler.c.flags=-c -Os -march=rv32i -mabi=ilp32 -fpeel-loops -ffreestanding -ffunction-sections -fdata-sections -Wall -Wno-comment -nostdinc "-I{build.system.path}/include" -include sys/param.h -include sys/stdint.h
+f32c.riscv.compiler.cpp.flags=-c -Os -march=rv32i -mabi=ilp32 -fpeel-loops -ffreestanding -ffunction-sections -fdata-sections -fpermissive -Wall -Wno-comment -nostdinc "-I{build.system.path}/include" -include sys/param.h -fno-rtti  -fno-exceptions -include sys/stdint.h
 f32c.riscv.compiler.ld.flags=-N -EL -melf32lriscv -gc-sections "--library-path={build.system.path}/riscv/lib"
 
 # f32c from Board Manager JSON automatic installation:
@@ -67,7 +67,7 @@ recipe.S.o.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.flags} -DARDUIN
 recipe.c.o.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.flags} -DARDUINO={runtime.ide.version} {compiler.c.extra_flags} {includes} "{source_file}" -o "{object_file}"
 
 ## Compile c++ files
-recipe.cpp.o.pattern="{compiler.path}{compiler.cpp.cmd}" {compiler.cpp.flags} -DARDUINO={runtime.ide.version} {compiler.cpp.extra_flags} {includes} "{source_file}" -o "{object_file}"
+recipe.cpp.o.pattern="{compiler.path}{compiler.cpp.cmd}" -fno-sized-deallocation {compiler.cpp.flags} -DARDUINO={runtime.ide.version} {compiler.cpp.extra_flags} {includes} "{source_file}" -o "{object_file}"
 
 ## Create archives
 recipe.ar.pattern="{compiler.path}{compiler.ar.cmd}" {compiler.ar.flags} {compiler.ar.extra_flags} "{archive_file_path}" "{object_file}"
